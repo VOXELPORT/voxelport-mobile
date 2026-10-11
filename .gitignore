@@ -1,0 +1,9 @@
+.gradle/
+build/
+app/build/
+app/.cxx/
+local.properties
+*.apk
+# Large binaries fetched at build time (see BUILDING.md)
+app/libs/vpmobile.aar
+app/src/main/assets/jre25-arm64.tar.xz
