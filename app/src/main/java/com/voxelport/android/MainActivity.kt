@@ -257,6 +257,7 @@ private fun App() {
             "files" -> FilesScreen(files.server, alive) { screen = "home" }
             "settings" -> SettingsScreen(files, alive, { screen = "home" }) { restart() }
             "browse" -> BrowseScreen(files, alive, { screen = "home" }) { restart() }
+            "support" -> SupportScreen { screen = "home" }
             "console" -> ConsoleScreen(log, alive, { line -> ServerService.send(ctx, ServerService.ACTION_COMMAND) { putExtra(ServerService.EXTRA_LINE, line) } }) { screen = "home" }
             else -> Column(
                 Modifier.fillMaxSize().systemBarsPadding().imePadding().verticalScroll(homeScroll).padding(16.dp),
@@ -488,6 +489,8 @@ private fun App() {
                     net, usage, limitMb, { limitMb = it; prefs.dataLimitMb = it },
                     saver, { applySaver(it) }, installed, alive, { restart() },
                 )
+
+                SupportPanel { screen = "support" }
 
                 // ── Console preview (the full console is its own screen) ──
                 Panel {

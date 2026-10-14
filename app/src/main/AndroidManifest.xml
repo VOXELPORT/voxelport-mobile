@@ -12,6 +12,14 @@
     <!-- Lets the app install its own updates (the user must still allow it once in Android settings). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Lets the app see whether a UPI payment app is installed (the Support screen opens one with a tip). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="upi" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
