@@ -30,4 +30,9 @@ class Prefs(ctx: Context) {
     var eula: Boolean
         get() = p.getBoolean("eula", false)
         set(v) = p.edit().putBoolean("eula", v).apply()
+
+    /** Minecraft/Paper version to install; empty means "latest". */
+    var version: String
+        get() = p.getString("version", "") ?: ""
+        set(v) = p.edit().putString("version", v).apply()
 }

@@ -15,6 +15,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -80,6 +81,10 @@ private fun App() {
     var ram by remember { mutableFloatStateOf(prefs.ramMb.toFloat()) }
     var name by remember { mutableStateOf(prefs.claimName) }
     var cmd by remember { mutableStateOf("") }
+    var screen by remember { mutableStateOf("main") }
+    var versions by remember { mutableStateOf<List<String>>(emptyList()) }
+    var pickVersion by remember { mutableStateOf(prefs.version.ifEmpty { version }) }
+    var showVersions by remember { mutableStateOf(false) }
 
     val totalMb = remember {
         val mi = ActivityManager.MemoryInfo()
@@ -108,17 +113,40 @@ private fun App() {
         try {
             withContext(Dispatchers.IO) {
                 Setup.installJre(ctx, files) { busy = it }
-                val v = Setup.latestPaperVersion()
+                val v = prefs.version.ifEmpty { Setup.latestPaperVersion() }
                 if (!files.serverReady || version != v) Setup.installPaper(files, v) { busy = it }
                 if (bedrock) Setup.installBedrock(files) { busy = it } else Setup.removeBedrock(files)
                 Setup.writeServerFiles(files)
                 version = v
+                pickVersion = v
             }
             installed = true
         } catch (e: Exception) {
             error = e.message ?: e.toString()
         }
         busy = ""
+    }
+
+    // Restart: fully stop the server (and tunnel), wait for the :jvm process to
+    // die, start again — and if it was public, make it public again.
+    fun restart() = scope.launch {
+        if (!alive) return@launch
+        val wasPublic = tunnel.on
+        error = ""; busy = "Restarting…"
+        ServerService.send(ctx, ServerService.ACTION_STOP)
+        withContext(Dispatchers.IO) { var n = 0; while (ServerService.isAlive(ctx) && n < 150) { delay(400); n++ } }
+        delay(500)
+        ServerService.send(ctx, ServerService.ACTION_START) { putExtra(ServerService.EXTRA_RAM_MB, ram.toInt()) }
+        if (wasPublic) {
+            withContext(Dispatchers.IO) { var n = 0; while (n < 600) { if (ServerService.isAlive(ctx) && Mobile.pingLocal(25565).isNotEmpty()) break; delay(500); n++ } }
+            TunnelService.send(ctx, TunnelService.ACTION_START) { putExtra(TunnelService.EXTRA_BEDROCK, bedrock) }
+        }
+        busy = ""
+    }
+
+    if (screen == "files") {
+        FilesScreen(files.server, alive) { screen = "main" }
+        return
     }
 
     Column(
@@ -153,11 +181,15 @@ private fun App() {
                 if (!alive) Btn("START", Grass, enabled = installed && eula && busy.isEmpty()) {
                     ServerService.send(ctx, ServerService.ACTION_START) { putExtra(ServerService.EXTRA_RAM_MB, ram.toInt()) }
                 }
-                else Btn("STOP", Red) {
-                    ServerService.send(ctx, ServerService.ACTION_STOP)
-                    TunnelService.send(ctx, TunnelService.ACTION_STOP)
+                else {
+                    Btn("STOP", Red, enabled = busy.isEmpty()) {
+                        ServerService.send(ctx, ServerService.ACTION_STOP)
+                        TunnelService.send(ctx, TunnelService.ACTION_STOP)
+                    }
+                    Btn("RESTART", Gold, enabled = busy.isEmpty()) { restart() }
                 }
             }
+            Btn("FILES · PLUGINS / MODS", Card, enabled = installed) { screen = "files" }
             val st = status
             Text(
                 when {
@@ -167,6 +199,22 @@ private fun App() {
                 },
                 color = if (st != null) Grass else Muted, fontWeight = FontWeight.Bold,
             )
+
+            // Version section: shows the installed version and lets you switch.
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Version: ${version.ifEmpty { "—" }}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Ink, modifier = Modifier.weight(1f))
+                TextButton({ showVersions = !showVersions }, enabled = !alive && busy.isEmpty()) { Text(if (showVersions) "Hide" else "Change") }
+            }
+            if (showVersions) {
+                LaunchedEffect(Unit) { if (versions.isEmpty()) runCatching { versions = withContext(Dispatchers.IO) { Setup.paperVersions(12) } } }
+                if (versions.isEmpty()) Text("Loading versions…", color = Muted, fontSize = 13.sp)
+                FlowRowChips(versions, pickVersion) { v ->
+                    pickVersion = v; prefs.version = v; showVersions = false
+                }
+                if (pickVersion.isNotEmpty() && pickVersion != version)
+                    Text("Tap UPDATE / REPAIR to install Minecraft $pickVersion.", color = Ink, fontSize = 13.sp)
+            }
         }
 
         Panel {
@@ -247,6 +295,24 @@ private fun Btn(label: String, color: Color, enabled: Boolean = true, onClick: (
         colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = if (color == Gold || color == Card) Ink else Color.White),
         modifier = Modifier.border(2.dp, Ink),
     ) { Text(label, fontWeight = FontWeight.Black) }
+}
+
+/** Wrapping grid of selectable version chips (rows of 3). */
+@Composable
+private fun FlowRowChips(items: List<String>, selected: String, onPick: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        items.chunked(3).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { v ->
+                    val sel = v == selected
+                    Box(
+                        Modifier.border(2.dp, Ink).background(if (sel) Gold else Card)
+                            .clickable { onPick(v) }.padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) { Text(v, fontSize = 13.sp, fontWeight = if (sel) FontWeight.Black else FontWeight.Normal, color = Ink) }
+                }
+            }
+        }
+    }
 }
 
 private fun copy(ctx: android.content.Context, text: String) {

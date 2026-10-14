@@ -9,6 +9,8 @@ class Files(ctx: Context) {
     val server = File(ctx.filesDir, "server")
     val jar = File(server, "server.jar")
     val plugins = File(server, "plugins")
+    val mods = File(server, "mods")
+    val version get() = File(server, "voxelport-version.txt").takeIf { it.isFile }?.readText()?.trim() ?: ""
     val log = File(ctx.filesDir, "console.log")
     val tmp = File(ctx.cacheDir, "jvm-tmp")
 

@@ -46,18 +46,22 @@ object Setup {
         if (!tmp.renameTo(f.jre)) error("Couldn't install Java")
     }
 
-    /** Latest stable Paper release (skips -rc/-pre versions). */
-    fun latestPaperVersion(): String {
+    /** Stable Paper (Minecraft) versions, newest first (skips -rc/-pre). */
+    fun paperVersions(limit: Int = 12): List<String> {
         val versions = getJson(PAPER).getJSONObject("versions")
+        val out = ArrayList<String>()
         for (group in versions.keys()) {
             val list = versions.getJSONArray(group)
             for (i in 0 until list.length()) {
                 val v = list.getString(i)
-                if (!v.contains('-')) return v
+                if (!v.contains('-')) out.add(v)
             }
         }
-        error("PaperMC returned no versions")
+        return out.take(limit)
     }
+
+    /** Latest stable Paper release (skips -rc/-pre versions). */
+    fun latestPaperVersion(): String = paperVersions(1).firstOrNull() ?: error("PaperMC returned no versions")
 
     fun installPaper(f: Files, version: String, progress: (String) -> Unit) {
         progress("Finding Paper $version…")
