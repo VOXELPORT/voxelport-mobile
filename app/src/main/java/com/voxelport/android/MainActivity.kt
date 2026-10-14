@@ -127,7 +127,7 @@ private fun App() {
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text("VOXELPORT", fontSize = 40.sp, fontWeight = FontWeight.Black, color = Ink)
-        Text("Host a Minecraft server from this phone. Test build.", color = Muted)
+        Text("Host a Minecraft server from this phone — free, no port forwarding.", color = Muted)
 
         Panel {
             Text("1 · SERVER", fontWeight = FontWeight.Black, color = Ink)
