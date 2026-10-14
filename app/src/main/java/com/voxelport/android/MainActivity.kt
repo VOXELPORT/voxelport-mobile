@@ -84,6 +84,7 @@ private fun App() {
     var ask by remember { mutableStateOf<DataAsk?>(null) }
     var publicAsk by remember { mutableStateOf(false) }
     var saverWithPublic by remember { mutableStateOf(true) }
+    var identityOpen by remember { mutableStateOf(false) }
     val hostCheck = DataLogic.hostCheck(limitMb, usage.bonusMb, usage.mobile, net.metered)
 
     var busy by remember { mutableStateOf("") }
@@ -483,6 +484,7 @@ private fun App() {
                         )
                         VpButton("STOP PUBLIC", VP.Card, Modifier.fillMaxWidth()) { TunnelService.send(ctx, TunnelService.ACTION_STOP) }
                     }
+                    TextButton({ identityOpen = true }) { Text("Back up or restore your address", fontSize = 13.sp) }
                 }
 
                 DataPanel(
@@ -514,6 +516,7 @@ private fun App() {
     }
 
     ask?.let { a -> DataAskDialog(a) { ask = null } }
+    if (identityOpen) IdentityDialog(tunnel.on) { identityOpen = false }
     if (publicAsk) {
         AlertDialog(
             onDismissRequest = { publicAsk = false },

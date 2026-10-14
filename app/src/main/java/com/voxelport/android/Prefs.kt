@@ -15,6 +15,18 @@ class Prefs(private val ctx: Context) {
             return t
         }
 
+    /**
+     * Replaces this install's identity with a backed-up one (see IdentityDialog). The custom address
+     * belongs to the identity, so the stored one is forgotten: the relay announces the right one
+     * the next time the server goes public. Returns false if [code] isn't a valid code.
+     */
+    fun restoreToken(code: String): Boolean {
+        val t = IdentityLogic.normalize(code)
+        if (!Mobile.validToken(t)) return false
+        p.edit().putString("token", t).putString("name", "").apply()
+        return true
+    }
+
     var claimName: String
         get() = p.getString("name", "") ?: ""
         set(v) = p.edit().putString("name", v).apply()
