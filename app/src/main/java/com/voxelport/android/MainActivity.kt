@@ -71,6 +71,9 @@ private fun App() {
     val prefs = remember { Prefs(ctx) }
     val scope = rememberCoroutineScope()
     val tunnel by TunnelService.state.collectAsStateWithLifecycle()
+    val update by Updater.state.collectAsStateWithLifecycle()
+    // Look for an app update when the app opens (at most every 6 hours; the footer button forces it).
+    LaunchedEffect(Unit) { Updater.check(ctx) }
 
     var busy by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
@@ -210,6 +213,8 @@ private fun App() {
                 Modifier.fillMaxSize().systemBarsPadding().imePadding().verticalScroll(homeScroll).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
+                UpdateBanner(update, alive)
+
                 // ── Header ──
                 val st = status
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -420,7 +425,15 @@ private fun App() {
                         for (line in log.takeLast(6)) Text(line, color = Color(0xFFE6E0D6), fontFamily = FontFamily.Monospace, fontSize = 10.5.sp, lineHeight = 13.sp, maxLines = 2)
                     }
                 }
-                Spacer(Modifier.height(24.dp))
+                // ── Version + manual update check ──
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("VoxelPort ${Updater.installedName(ctx)} · build ${Updater.installedCode(ctx)}", color = VP.Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    TextButton(
+                        { Updater.check(ctx, force = true) },
+                        enabled = update !is UpdateState.Checking && update !is UpdateState.Downloading && update !is UpdateState.Installing,
+                    ) { Text(if (update is UpdateState.Checking) "Checking…" else "Check for updates", fontSize = 12.sp) }
+                }
+                Spacer(Modifier.height(12.dp))
             }
         }
     }

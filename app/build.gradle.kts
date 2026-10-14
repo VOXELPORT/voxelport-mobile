@@ -21,7 +21,7 @@ android {
         applicationId = "com.voxelport.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
+        versionCode = 7
         versionName = "1.0.0"
         // The bundled Java runtime is arm64 only; every phone that can host a server is arm64.
         ndk { abiFilters += "arm64-v8a" }
@@ -71,4 +71,5 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20231013") // the real org.json (android.jar only has stubs on the unit-test classpath)
 }

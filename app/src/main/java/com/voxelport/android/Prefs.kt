@@ -32,6 +32,11 @@ class Prefs(private val ctx: Context) {
         get() = p.getBoolean("eula", false)
         set(v) = p.edit().putBoolean("eula", v).apply()
 
+    /** When we last asked voxelport.in about an app update (ms since epoch). */
+    var lastUpdateCheck: Long
+        get() = p.getLong("update_check", 0L)
+        set(v) = p.edit().putLong("update_check", v).apply()
+
     /** Performance level: "auto" (from the phone), "low", "balanced" or "high". */
     var profile: String
         get() = p.getString("profile", "auto") ?: "auto"

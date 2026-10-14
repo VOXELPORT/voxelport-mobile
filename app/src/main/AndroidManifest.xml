@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Lets the app install its own updates (the user must still allow it once in Android settings). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="false"
@@ -49,5 +51,7 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keeps the hosted Minecraft server reachable through the VoxelPort relay" />
         </service>
+        <!-- Android reports the result of an app update here. Not exported: only the system installer can reach it via our PendingIntent. -->
+        <receiver android:name=".UpdateReceiver" android:exported="false" />
     </application>
 </manifest>
