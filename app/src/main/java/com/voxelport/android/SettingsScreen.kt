@@ -49,6 +49,11 @@ fun SettingsScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: 
     val file = remember { File(files.server, "server.properties") }
     val v = remember { mutableStateMapOf<String, String>().apply { putAll(DEFAULTS); putAll(ServerProps.read(file).filterKeys { it in DEFAULTS }) } }
     var msg by remember { mutableStateOf("") }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { Prefs(ctx) }
+    val device = remember { deviceOf(ctx) }
+    var profile by remember { mutableStateOf(prefs.profile) }
+    val level = Tuning.resolve(profile, device)
 
     fun save(): Boolean {
         val out = LinkedHashMap<String, String>()
@@ -68,7 +73,36 @@ fun SettingsScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: 
             Text("SETTINGS", fontSize = 30.sp, fontWeight = FontWeight.Black, color = Ink, modifier = Modifier.weight(1f))
             TextButton(onBack) { Text("Done") }
         }
-        Text("Gameplay · Minecraft ${files.version.ifEmpty { "—" }} (${files.type.replaceFirstChar { it.uppercase() }})", color = Muted, fontSize = 13.sp)
+        Text("Minecraft ${files.version.ifEmpty { "—" }} (${files.type.replaceFirstChar { it.uppercase() }})", color = Muted, fontSize = 13.sp)
+
+        AccountsPanel(files, alive, onRestart)
+
+        // Performance: fit the server to this phone.
+        Panel {
+            PanelTitle("PERFORMANCE")
+            Text("This phone: ${"%.1f".format(device.ramMb / 1024f)} GB RAM · ${device.cores} cores", color = Muted, fontSize = 13.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for ((id, label) in listOf("auto" to "Auto", "low" to "Low-end", "balanced" to "Balanced", "high" to "High-end")) {
+                    val sel = profile == id
+                    VpButton(label, if (sel) VP.Gold else VP.Card, Modifier.weight(1f)) {
+                        profile = id; prefs.profile = id
+                        val lv = Tuning.resolve(id, device)
+                        runCatching { Tuning.applyProps(files.server, lv) }
+                        for ((k, value) in Tuning.profileProps(lv)) if (k in v) v[k] = value
+                        msg = "${lv.label} applied. Restart the server to use it."
+                    }
+                }
+            }
+            Text(
+                (if (profile == "auto") "Auto chose ${level.label} for this phone. " else "") + when (level) {
+                    Tuning.Level.LOW -> "Small view distance, fewer mobs, a lighter garbage collector and fewer background threads. Best for phones with 4 GB or less."
+                    Tuning.Level.BALANCED -> "A good middle: moderate view distance and mob limits, tuned memory use. Best for most phones."
+                    Tuning.Level.HIGH -> "Bigger view distance and more mobs. For phones with 10 GB+ and good cooling."
+                },
+                fontSize = 13.sp, color = VP.Ink,
+            )
+            Text("View and simulation distance (below) change at once; the engine tuning applies from the next start.", color = Muted, fontSize = 12.sp)
+        }
 
         Column(Modifier.fillMaxWidth().background(Card).border(3.dp, Ink).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("GAMEPLAY", fontWeight = FontWeight.Black, color = Ink)

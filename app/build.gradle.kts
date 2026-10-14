@@ -21,7 +21,7 @@ android {
         applicationId = "com.voxelport.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
+        versionCode = 6
         versionName = "1.0.0"
         // The bundled Java runtime is arm64 only; every phone that can host a server is arm64.
         ndk { abiFilters += "arm64-v8a" }
@@ -69,4 +69,6 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+
+    testImplementation("junit:junit:4.13.2")
 }

@@ -35,21 +35,19 @@ class ServerService : Service() {
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "VoxelPort:server").apply { acquire() }
         val f = Files(this)
         f.tmp.mkdirs()
-        val args = arrayOf(
-            "-Xms512M", "-Xmx${ramMb}M",
-            "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=100",
-            "-Djava.io.tmpdir=${f.tmp.path}",
-            "-Duser.home=${f.server.path}",
-            "-Dfile.encoding=UTF-8",
-            "-Djava.awt.headless=true",
-            "-Dterminal.jline=false", "-Dterminal.ansi=false",
-            // Our embedded Java 25 reports as "25.0.5-internal" (a custom Android
-            // build, not an official GA release), so Paper's version guard refuses
-            // to start. The major version is correct for this Minecraft; bypass it.
-            "-DPaper.IgnoreJavaVersion=true",
-            "-jar", f.jar.path, "--nogui",
-        )
+        val device = deviceOf(this)
+        val profile = Prefs(this).profile
         thread(name = "minecraft-server") {
+            // Fit the server to this phone (view distance, mob limits, threads) and pick JVM flags for it.
+            val level = Tuning.resolve(profile, device)
+            runCatching { Tuning.prepare(f.server, level) }
+            val args = (
+                Tuning.jvmFlags(level, ramMb, device) + listOf(
+                    "-Djava.io.tmpdir=${f.tmp.path}",
+                    "-Duser.home=${f.server.path}",
+                    "-jar", f.jar.path, "--nogui",
+                )
+            ).toTypedArray()
             val rc = Jvm.launch(f.jre.path, f.server.path, args, f.log.path)
             // Reached only if Java returned instead of exiting the process.
             File(f.log.path).appendText("\n[VoxelPort] Server stopped (code $rc).\n")

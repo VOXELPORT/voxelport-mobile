@@ -6,7 +6,9 @@ import android.app.ActivityManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
@@ -42,7 +44,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.voxelport.go.mobile.Mobile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -98,28 +102,40 @@ private fun App() {
     // If the relay never answers, don't spin forever.
     LaunchedEffect(claiming) { if (claiming) { delay(15_000); claiming = false } }
 
-    val totalMb = remember {
-        val mi = ActivityManager.MemoryInfo()
-        ctx.getSystemService(ActivityManager::class.java).getMemoryInfo(mi)
-        (mi.totalMem / 1_048_576).toInt()
-    }
+    val device = remember { deviceOf(ctx) }
+    val totalMb = device.ramMb
+    val recommendedMb = Tuning.recommendedRamMb(device)
     // RAM in 256 MB steps, up to half the phone's memory.
-    val ramSteps = (((totalMb / 2).coerceIn(1024, 6144) - 1024) / 256)
+    val ramSteps = (Tuning.maxRamMb(device) - 1024) / 256
     val ramMax = 1024f + ramSteps * 256f
     var ram by remember { mutableFloatStateOf(((prefs.ramMb.toFloat().coerceIn(1024f, ramMax) - 1024f) / 256f).toInt() * 256f + 1024f) }
 
     // Poll the server process, its status (Server List Ping) and the console log.
+    // Only while the app is on screen: the server runs in its own process, so nothing is lost when
+    // we stop looking, and the phone isn't woken every 1.5 s in the background.
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    var hot by remember { mutableStateOf(false) }
+    var battery by remember { mutableStateOf(100 to true) } // (percent, plugged in)
     LaunchedEffect(Unit) {
         var pos = 0L
-        while (true) {
-            val a = withContext(Dispatchers.IO) { ServerService.isAlive(ctx) }
-            alive = a
-            status = if (a) withContext(Dispatchers.IO) { Mobile.pingLocal(25565).takeIf { it.isNotEmpty() }?.let { JSONObject(it) } } else null
-            val (lines, p) = withContext(Dispatchers.IO) { tail(files.log.path, pos) }
-            if (p < pos) log = emptyList()
-            pos = p
-            if (lines.isNotEmpty()) log = (log + lines).takeLast(400)
-            delay(1500)
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                val a = withContext(Dispatchers.IO) { ServerService.isAlive(ctx) }
+                alive = a
+                status = if (a) withContext(Dispatchers.IO) { Mobile.pingLocal(25565).takeIf { it.isNotEmpty() }?.let { JSONObject(it) } } else null
+                val (lines, p) = withContext(Dispatchers.IO) { tail(files.log.path, pos) }
+                if (p < pos) log = emptyList()
+                pos = p
+                if (lines.isNotEmpty()) log = (log + lines).takeLast(400)
+                if (a) withContext(Dispatchers.IO) {
+                    hot = Build.VERSION.SDK_INT >= 29 && ctx.getSystemService(PowerManager::class.java).currentThermalStatus >= 2 // moderate or worse
+                    val b = ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                    val lvl = b?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                    val scale = b?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+                    battery = (if (lvl >= 0 && scale > 0) lvl * 100 / scale else 100) to ((b?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0)
+                } else hot = false
+                delay(if (a) 1500 else 3000)
+            }
         }
     }
 
@@ -127,6 +143,9 @@ private fun App() {
         error = ""
         try {
             withContext(Dispatchers.IO) {
+                // Java unpacks to ~200 MB, Paper + the vanilla jar ~120 MB, plus the world: fail early, not half-way.
+                if (!files.jreReady && ctx.filesDir.usableSpace < 1_200_000_000L)
+                    error("Not enough free storage: VoxelPort needs about 1.2 GB free (this phone has ${ctx.filesDir.usableSpace / 1_000_000} MB). Free some space and try again.")
                 Setup.installJre(ctx, files) { busy = it }
                 val v = prefs.version.ifEmpty { Setup.versionsFor(type, 1).firstOrNull() ?: error("No $type versions found") }
                 if (!files.serverReady || version != v || files.type != type) {
@@ -140,7 +159,7 @@ private fun App() {
                             if (!Modrinth.isInstalled(files, id)) Modrinth.install(files, id, name, "fabric", v) { busy = it }
                     } else Setup.installBedrock(files) { busy = it }
                 }
-                Setup.writeServerFiles(files)
+                Setup.writeServerFiles(files, Tuning.resolve(prefs.profile, device))
                 version = v
                 pickVersion = v
             }
@@ -246,6 +265,9 @@ private fun App() {
                         color = if (st != null) VP.GrassDark else VP.Muted, fontWeight = FontWeight.Bold, fontSize = 13.sp,
                     )
 
+                    if (alive && hot) Text("Your phone is hot and may slow the server down. Let it cool, or choose Low-end in Settings → Performance.", color = VP.Red, fontSize = 13.sp)
+                    if (alive && !battery.second && battery.first <= 30) Text("Battery ${battery.first}% and not charging. Plug in to keep the server running.", color = VP.Red, fontSize = 13.sp)
+
                     if (installed) {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             VpButton(if (type == "fabric") "ADD MODS" else "ADD PLUGINS", VP.Grass, Modifier.weight(1f)) { screen = "browse" }
@@ -273,7 +295,12 @@ private fun App() {
                                 Checkbox(bedrock, { bedrock = it; prefs.bedrock = it }, enabled = !alive && busy.isEmpty())
                                 Text("Let Bedrock players join (phones, consoles)", fontSize = 14.sp, modifier = Modifier.weight(1f))
                             }
-                            Text("RAM for the server: ${"%.2f".format(ram / 1024f).trimEnd('0').trimEnd('.')} GB (phone has ${totalMb / 1024} GB)", fontSize = 14.sp)
+                            Text("RAM for the server: ${"%.2f".format(ram / 1024f).trimEnd('0').trimEnd('.')} GB (phone has ${"%.1f".format(totalMb / 1024f)} GB)", fontSize = 14.sp)
+                            Text(
+                                if (ram > recommendedMb * 3 / 2) "More than this phone can spare: Android may close the server. Recommended: ${"%.1f".format(recommendedMb / 1024f)} GB."
+                                else "Recommended for this phone: ${"%.1f".format(recommendedMb / 1024f)} GB.",
+                                fontSize = 12.sp, color = if (ram > recommendedMb * 3 / 2) VP.Red else VP.Muted,
+                            )
                             if (ramSteps >= 1) Slider(
                                 ram, { ram = it }, onValueChangeFinished = { prefs.ramMb = ram.toInt() },
                                 valueRange = 1024f..ramMax, steps = (ramSteps - 1).coerceAtLeast(0), enabled = !alive,
@@ -313,6 +340,8 @@ private fun App() {
                         }
                     }
                 }
+
+                if (installed) AccountsPanel(files, alive) { restart() }
 
                 // ── Public address ──
                 Panel {

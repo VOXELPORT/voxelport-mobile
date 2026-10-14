@@ -4,7 +4,7 @@ import android.content.Context
 import com.voxelport.go.mobile.Mobile
 
 /** Small settings, plus this install's VoxelPort identity (its public port and address belong to it). */
-class Prefs(ctx: Context) {
+class Prefs(private val ctx: Context) {
     private val p = ctx.getSharedPreferences("voxelport", Context.MODE_PRIVATE)
 
     val token: String
@@ -19,8 +19,9 @@ class Prefs(ctx: Context) {
         get() = p.getString("name", "") ?: ""
         set(v) = p.edit().putString("name", v).apply()
 
+    /** Server heap in MB; until the user picks one, a size that suits this phone. */
     var ramMb: Int
-        get() = p.getInt("ram", 2048)
+        get() = if (p.contains("ram")) p.getInt("ram", 2048) else Tuning.recommendedRamMb(deviceOf(ctx))
         set(v) = p.edit().putInt("ram", v).apply()
 
     var bedrock: Boolean
@@ -30,6 +31,11 @@ class Prefs(ctx: Context) {
     var eula: Boolean
         get() = p.getBoolean("eula", false)
         set(v) = p.edit().putBoolean("eula", v).apply()
+
+    /** Performance level: "auto" (from the phone), "low", "balanced" or "high". */
+    var profile: String
+        get() = p.getString("profile", "auto") ?: "auto"
+        set(v) = p.edit().putString("profile", v).apply()
 
     /** Server software to install: "paper" (plugins) or "fabric" (mods). */
     var type: String

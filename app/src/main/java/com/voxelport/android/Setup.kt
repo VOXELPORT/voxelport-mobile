@@ -136,23 +136,14 @@ object Setup {
     }
 
     /** First-run files: the EULA the user accepted, and phone-friendly defaults. */
-    fun writeServerFiles(f: Files) {
+    fun writeServerFiles(f: Files, level: Tuning.Level) {
         f.server.mkdirs()
         File(f.server, "eula.txt").writeText("# Accepted in the VoxelPort app (https://aka.ms/MinecraftEULA)\neula=true\n")
         val props = File(f.server, "server.properties")
         if (!props.exists()) {
-            props.writeText(
-                """
-                |motd=A VoxelPort phone server
-                |server-port=25565
-                |max-players=10
-                |view-distance=6
-                |simulation-distance=4
-                |online-mode=true
-                |enable-rcon=false
-                |sync-chunk-writes=false
-                |""".trimMargin()
-            )
+            // First install: defaults sized for this phone (see Tuning).
+            ServerProps.write(props, Tuning.initialProps(level))
+            Tuning.markProps(f.server, level)
         }
     }
 
