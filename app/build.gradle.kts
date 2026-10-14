@@ -1,8 +1,16 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+// Release signing: read the keystore from keystore.properties if present (kept
+// out of git). Without it — e.g. a fresh checkout — release falls back to the
+// debug key so the project still builds.
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply { if (keystorePropsFile.exists()) load(keystorePropsFile.inputStream()) }
 
 android {
     namespace = "com.voxelport.android"
@@ -20,10 +28,21 @@ android {
         externalNativeBuild { cmake { arguments += "-DANDROID_STL=c++_shared" } }
     }
 
+    signingConfigs {
+        if (keystorePropsFile.exists()) {
+            create("release") {
+                storeFile = file(keystoreProps["storeFile"] as String)
+                storePassword = keystoreProps["storePassword"] as String
+                keyAlias = keystoreProps["keyAlias"] as String
+                keyPassword = keystoreProps["keyPassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug") // Phase 0 test builds only
+            signingConfig = signingConfigs.getByName(if (keystorePropsFile.exists()) "release" else "debug")
         }
     }
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt") } }
