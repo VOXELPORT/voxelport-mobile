@@ -22,6 +22,10 @@ data class TunnelState(
     val address: String = "",
     val pingMs: Int = 0,
     val error: String = "",
+    /** Why the last claim failed (taken, too many tries…); shown next to the name box. */
+    val nameError: String = "",
+    /** Non-fatal heads-up from the relay (Bedrock unavailable, nothing answering on the port…). */
+    val notice: String = "",
 )
 
 /** Keeps the server reachable through the VoxelPort relay (Go tunnel, gomobile). */
@@ -36,7 +40,7 @@ class TunnelService : Service() {
         when (intent?.action) {
             ACTION_START -> start(intent.getBooleanExtra(EXTRA_BEDROCK, false))
             ACTION_CLAIM -> intent.getStringExtra(EXTRA_NAME)?.let { host?.claimName(it) }
-            ACTION_RELEASE -> { host?.releaseName(); _state.update { it.copy(name = "", address = "") } }
+            ACTION_RELEASE -> { host?.releaseName(); Prefs(this).claimName = ""; _state.update { it.copy(name = "", address = "", nameError = "") } }
             ACTION_STOP -> { stopTunnel(); stopSelf() }
         }
         return START_NOT_STICKY
@@ -57,11 +61,15 @@ class TunnelService : Service() {
                 _state.update { s ->
                     when (kind) {
                         "port" -> s.copy(port = port.toInt(), status = "Public", error = "")
-                        "name" -> { prefs.claimName = name; s.copy(name = name, address = address, error = "") }
+                        "name" -> { prefs.claimName = name; s.copy(name = name, address = address, nameError = "") }
+                        "name_error" -> s.copy(nameError = text)
                         "ping" -> s.copy(pingMs = pingMs.toInt())
-                        "status", "log" -> s.copy(status = text)
+                        "status" -> s.copy(status = text)
+                        "log", "udp_error", "listing_error" -> s.copy(notice = text)
                         "fatal" -> s.copy(error = text, status = "Stopped")
-                        else -> s.copy(error = text)
+                        "error" -> s.copy(error = text)
+                        // "players" carries a joining player's IP address: never show it.
+                        else -> s
                     }
                 }
             }
@@ -91,6 +99,9 @@ class TunnelService : Service() {
 
         private val _state = MutableStateFlow(TunnelState())
         val state: StateFlow<TunnelState> = _state
+
+        /** Clears the name error once the user starts a new claim. */
+        fun clearNameError() = _state.update { it.copy(nameError = "") }
 
         fun send(ctx: Context, action: String, extras: Intent.() -> Unit = {}) {
             val i = Intent(ctx, TunnelService::class.java).setAction(action).apply(extras)
