@@ -43,6 +43,10 @@ class ServerService : Service() {
             "-Dfile.encoding=UTF-8",
             "-Djava.awt.headless=true",
             "-Dterminal.jline=false", "-Dterminal.ansi=false",
+            // Our embedded Java 25 reports as "25.0.5-internal" (a custom Android
+            // build, not an official GA release), so Paper's version guard refuses
+            // to start. The major version is correct for this Minecraft; bypass it.
+            "-DPaper.IgnoreJavaVersion=true",
             "-jar", f.jar.path, "--nogui",
         )
         thread(name = "minecraft-server") {
