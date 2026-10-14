@@ -69,20 +69,33 @@ object Tuning {
 
     // ── server.properties ──
     /** Settings chosen once, when the server is first installed. */
-    fun initialProps(level: Level): Map<String, String> = mapOf(
+    fun initialProps(level: Level, saver: Boolean = false): Map<String, String> = mapOf(
         "motd" to "A VoxelPort phone server",
         "server-port" to "25565",
         "max-players" to when (level) { Level.LOW -> "6"; Level.BALANCED -> "10"; Level.HIGH -> "20" },
         "online-mode" to "true",
         "enable-rcon" to "false",
         "sync-chunk-writes" to "false",
-    ) + profileProps(level)
+    ) + profileProps(level, saver)
 
-    /** What a performance level sets in server.properties. */
-    fun profileProps(level: Level): Map<String, String> = mapOf(
-        "view-distance" to when (level) { Level.LOW -> "4"; Level.BALANCED -> "6"; Level.HIGH -> "8" },
-        "simulation-distance" to when (level) { Level.LOW -> "3"; Level.BALANCED -> "4"; Level.HIGH -> "6" },
-        "entity-broadcast-range-percentage" to when (level) { Level.LOW -> "60"; Level.BALANCED -> "80"; Level.HIGH -> "100" },
+    /**
+     * What a performance level sets in server.properties. With [saver] (Data saver) each player gets
+     * a smaller world and fewer entity updates: the world data a player downloads is what mostly
+     * decides how much mobile data hosting uses, and it grows with the square of the view distance.
+     */
+    fun profileProps(level: Level, saver: Boolean = false): Map<String, String> = mapOf(
+        "view-distance" to when {
+            saver -> if (level == Level.LOW) "3" else "4"
+            else -> when (level) { Level.LOW -> "4"; Level.BALANCED -> "6"; Level.HIGH -> "8" }
+        },
+        "simulation-distance" to when {
+            saver -> "3"
+            else -> when (level) { Level.LOW -> "3"; Level.BALANCED -> "4"; Level.HIGH -> "6" }
+        },
+        "entity-broadcast-range-percentage" to when {
+            saver -> "50"
+            else -> when (level) { Level.LOW -> "60"; Level.BALANCED -> "80"; Level.HIGH -> "100" }
+        },
         // Stop ticking the world when nobody is on: saves battery and heat.
         "pause-when-empty-seconds" to "30",
     )
@@ -92,8 +105,21 @@ object Tuning {
         Triple(file, path.split('.'), value.toString())
 
     /** (file, key path, value). Only existing keys are changed (see YamlEdit). */
-    fun yamlEdits(level: Level): List<Triple<String, List<String>, String>> {
+    fun yamlEdits(level: Level, saver: Boolean = false): List<Triple<String, List<String>, String>> {
         fun pick(low: Any, bal: Any, high: Any) = when (level) { Level.LOW -> low; Level.BALANCED -> bal; Level.HIGH -> high }
+        // How far away a client is still sent other players and mobs. Data saver: only what is close.
+        // Without it, Spigot's own values, so turning the saver off puts them back.
+        val trackingEdits = if (saver) listOf(
+            p("spigot.yml", "world-settings.default.entity-tracking-range.players", 32),
+            p("spigot.yml", "world-settings.default.entity-tracking-range.animals", 24),
+            p("spigot.yml", "world-settings.default.entity-tracking-range.monsters", 32),
+            p("spigot.yml", "world-settings.default.entity-tracking-range.misc", 16),
+            p("spigot.yml", "world-settings.default.entity-tracking-range.other", 32),
+        ) else listOf(
+            p("spigot.yml", "world-settings.default.entity-tracking-range.players", 48),
+            p("spigot.yml", "world-settings.default.entity-tracking-range.misc", 32),
+            p("spigot.yml", "world-settings.default.entity-tracking-range.other", 64),
+        )
         return listOf(
             // Fewer chunk-writes per tick and background threads, so the main thread keeps its core.
             p("config/paper-global.yml", "chunk-system.worker-threads", pick(1, 2, 3)),
@@ -114,7 +140,7 @@ object Tuning {
             p("spigot.yml", "world-settings.default.entity-activation-range.misc", pick(4, 8, 16)),
             p("spigot.yml", "world-settings.default.entity-tracking-range.animals", pick(32, 48, 48)),
             p("spigot.yml", "world-settings.default.entity-tracking-range.monsters", pick(32, 48, 48)),
-        )
+        ) + trackingEdits // applied in order, so the saver's animals/monsters values replace the level's
     }
 
     // ── applying it ──
@@ -123,13 +149,16 @@ object Tuning {
         marker(server).takeIf { it.isFile }?.readLines()?.mapNotNull { l -> l.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] } }?.toMap() ?: emptyMap()
     private fun writeMarker(server: File, m: Map<String, String>) = marker(server).writeText(m.entries.joinToString("\n") { "${it.key}=${it.value}" } + "\n")
 
-    /** Remembers that [level] is what server.properties was last tuned for. */
-    fun markProps(server: File, level: Level) = writeMarker(server, readMarker(server) + ("props" to level.id))
+    /** What the markers record: the level, plus "+saver" with Data saver on. */
+    private fun key(level: Level, saver: Boolean) = level.id + if (saver) "+saver" else ""
 
-    /** Writes a level's server.properties settings right now (used when the user picks a level). */
-    fun applyProps(server: File, level: Level) {
-        ServerProps.write(File(server, "server.properties"), profileProps(level))
-        writeMarker(server, readMarker(server) + ("props" to level.id))
+    /** Remembers that [level] is what server.properties was last tuned for. */
+    fun markProps(server: File, level: Level, saver: Boolean = false) = writeMarker(server, readMarker(server) + ("props" to key(level, saver)))
+
+    /** Writes a level's server.properties settings right now (used when the user picks a level or Data saver). */
+    fun applyProps(server: File, level: Level, saver: Boolean = false) {
+        ServerProps.write(File(server, "server.properties"), profileProps(level, saver))
+        writeMarker(server, readMarker(server) + ("props" to key(level, saver)))
     }
 
     /**
@@ -137,16 +166,17 @@ object Tuning {
      * the Paper/Spigot/Bukkit files as soon as the server has generated them (the first start
      * creates them, so they are tuned from the second start on). Your own edits afterwards are kept.
      */
-    fun prepare(server: File, level: Level) {
+    fun prepare(server: File, level: Level, saver: Boolean = false) {
+        val k = key(level, saver)
         var m = readMarker(server)
-        if (m["props"] != level.id) {
-            runCatching { ServerProps.write(File(server, "server.properties"), profileProps(level)) }
-            m = m + ("props" to level.id)
+        if (m["props"] != k) {
+            runCatching { ServerProps.write(File(server, "server.properties"), profileProps(level, saver)) }
+            m = m + ("props" to k)
         }
-        if (m["yaml"] != level.id && File(server, "config/paper-global.yml").isFile) {
+        if (m["yaml"] != k && File(server, "config/paper-global.yml").isFile) {
             var changed = 0
-            for ((file, path, value) in yamlEdits(level)) changed += runCatching { YamlEdit.apply(File(server, file), listOf(path to value)) }.getOrDefault(0)
-            if (changed > 0) m = m + ("yaml" to level.id)
+            for ((file, path, value) in yamlEdits(level, saver)) changed += runCatching { YamlEdit.apply(File(server, file), listOf(path to value)) }.getOrDefault(0)
+            if (changed > 0) m = m + ("yaml" to k)
         }
         runCatching { writeMarker(server, m) }
     }

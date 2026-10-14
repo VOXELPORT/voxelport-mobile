@@ -87,8 +87,8 @@ fun SettingsScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: 
                     VpButton(label, if (sel) VP.Gold else VP.Card, Modifier.weight(1f)) {
                         profile = id; prefs.profile = id
                         val lv = Tuning.resolve(id, device)
-                        runCatching { Tuning.applyProps(files.server, lv) }
-                        for ((k, value) in Tuning.profileProps(lv)) if (k in v) v[k] = value
+                        runCatching { Tuning.applyProps(files.server, lv, prefs.dataSaver) }
+                        for ((k, value) in Tuning.profileProps(lv, prefs.dataSaver)) if (k in v) v[k] = value
                         msg = "${lv.label} applied. Restart the server to use it."
                     }
                 }

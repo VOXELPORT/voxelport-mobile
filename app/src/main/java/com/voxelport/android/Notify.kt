@@ -33,6 +33,32 @@ object Notify {
             .build()
     }
 
+    /** Changes the text of the ongoing notification (e.g. to show today's mobile data use). */
+    fun update(ctx: Context, title: String, text: String) {
+        ctx.getSystemService(NotificationManager::class.java).notify(ID, build(ctx, title, text))
+    }
+
+    private const val ALERTS = "data"
+    private const val ALERT_ID = 2
+
+    /** A one-off heads-up about data use; separate from the ongoing notification so it makes a sound and can be swiped away. */
+    fun alert(ctx: Context, title: String, text: String) {
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(NotificationChannel(ALERTS, "Data use", NotificationManager.IMPORTANCE_DEFAULT))
+        val open = PendingIntent.getActivity(ctx, 2, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        nm.notify(
+            ALERT_ID,
+            Notification.Builder(ctx, ALERTS)
+                .setSmallIcon(android.R.drawable.stat_sys_warning)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(Notification.BigTextStyle().bigText(text))
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .build(),
+        )
+    }
+
     fun foreground(svc: Service, title: String, text: String) {
         val n = build(svc, title, text)
         if (Build.VERSION.SDK_INT >= 34) svc.startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)

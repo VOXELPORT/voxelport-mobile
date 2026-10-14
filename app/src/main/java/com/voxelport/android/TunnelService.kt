@@ -9,6 +9,13 @@ import android.os.PowerManager
 import com.voxelport.go.mobile.Host
 import com.voxelport.go.mobile.Listener
 import com.voxelport.go.mobile.Mobile
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -33,8 +40,15 @@ class TunnelService : Service() {
     private var host: Host? = null
     private var wake: PowerManager.WakeLock? = null
     private var wifi: WifiManager.WifiLock? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var dataWatch: Job? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        DataMeter.init(this)
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -49,6 +63,12 @@ class TunnelService : Service() {
     private fun start(bedrock: Boolean) {
         Notify.foreground(this, "Minecraft server is public", "Friends can join while this runs")
         if (host != null) return
+        // The screen already refuses to start sharing over the limit; this is the same rule, enforced here too.
+        val use = DataMeter.usage.value
+        if (DataLogic.hostCheck(Prefs(this).dataLimitMb, use.bonusMb, use.mobile, DataMeter.net.value.metered) != DataLogic.HostCheck.OK) {
+            stopSelf()
+            return
+        }
         wake = getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "VoxelPort:tunnel").apply { acquire() }
         @Suppress("DEPRECATION")
@@ -74,9 +94,66 @@ class TunnelService : Service() {
                 }
             }
         })
+        DataMeter.beginSession()
+        watchData(prefs)
+    }
+
+    /**
+     * While public: keeps count of the data used, warns when the day's mobile limit is nearly
+     * reached, and stops sharing (the server itself keeps running) when it is reached, or when
+     * the phone drops to mobile data while the limit is "Wi‑Fi only".
+     */
+    private fun watchData(prefs: Prefs) {
+        dataWatch?.cancel()
+        dataWatch = scope.launch {
+            var ticks = 0
+            while (isActive) {
+                delay(5_000)
+                DataMeter.sample()
+                val use = DataMeter.usage.value
+                val net = DataMeter.net.value
+                val limit = prefs.dataLimitMb
+                when (DataLogic.hostCheck(limit, use.bonusMb, use.mobile, net.metered)) {
+                    DataLogic.HostCheck.OK -> {
+                        if (net.metered && DataLogic.level(use.mobile, limit, use.bonusMb) == DataLogic.Level.WARN && DataMeter.firstWarningToday())
+                            Notify.alert(
+                                this@TunnelService, "Mobile data nearly used up",
+                                "VoxelPort has used ${DataLogic.format(use.mobile)} of today's ${DataLogic.limitLabel(limit)} on mobile data. " +
+                                    "Sharing stops at the limit. Connect to Wi‑Fi to keep your server public.",
+                            )
+                        // With the app closed, the notification is where you can see what hosting costs.
+                        if (net.metered && ++ticks % 6 == 0)
+                            Notify.update(this@TunnelService, "Minecraft server is public", "On mobile data · ${DataLogic.format(use.mobile)} used today")
+                    }
+                    DataLogic.HostCheck.OVER_LIMIT -> {
+                        Notify.alert(
+                            this@TunnelService, "Stopped sharing your server",
+                            "Today's mobile-data limit (${DataLogic.limitLabel(limit)}) is used up, so your server is no longer public. " +
+                                "It is still running on your phone. Connect to Wi‑Fi to make it public again.",
+                        )
+                        stopSharing(); return@launch
+                    }
+                    DataLogic.HostCheck.WIFI_ONLY -> {
+                        Notify.alert(
+                            this@TunnelService, "Stopped sharing your server",
+                            "Your phone is on mobile data and VoxelPort is set to Wi‑Fi only, so your server is no longer public. " +
+                                "It is still running on your phone. Connect to Wi‑Fi to make it public again.",
+                        )
+                        stopSharing(); return@launch
+                    }
+                }
+            }
+        }
+    }
+
+    private fun stopSharing() {
+        stopTunnel()
+        stopSelf()
     }
 
     private fun stopTunnel() {
+        dataWatch?.cancel()
+        dataWatch = null
         host?.stop()
         host = null
         wake?.let { if (it.isHeld) it.release() }
@@ -86,6 +163,11 @@ class TunnelService : Service() {
 
     override fun onDestroy() {
         stopTunnel()
+        // The server's notification shares this one's id: if the server is still running, keep its notification.
+        if (ServerService.isAlive(this)) {
+            stopForeground(STOP_FOREGROUND_DETACH)
+            Notify.update(this, "Minecraft server running", "Tap to open VoxelPort")
+        }
         super.onDestroy()
     }
 

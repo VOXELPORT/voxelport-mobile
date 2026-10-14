@@ -92,7 +92,12 @@ object Modrinth {
     }
 
     /** Installs [projectId] (and its required dependencies). Returns the titles installed. */
-    fun install(f: Files, projectId: String, title: String, type: String, mc: String, depth: Int = 0, progress: (String) -> Unit): List<String> {
+    fun install(
+        f: Files, projectId: String, title: String, type: String, mc: String, depth: Int = 0,
+        /** Called with each file's size before it is downloaded; may throw to stop (see [BigDownload]). */
+        sizeGuard: ((title: String, bytes: Long) -> Unit)? = null,
+        progress: (String) -> Unit,
+    ): List<String> {
         val v = bestVersion(projectId, type, mc)
             ?: error("$title has no ${if (type == "fabric") "Fabric" else "Paper"} version for Minecraft $mc")
         val done = ArrayList<String>()
@@ -105,7 +110,7 @@ object Modrinth {
             val depId = d.getString("project_id")
             if (isInstalled(f, depId)) continue
             val depTitle = runCatching { Setup.getJson("$API/project/$depId").getString("title") }.getOrDefault("a required library")
-            done += install(f, depId, depTitle, type, mc, depth + 1, progress)
+            done += install(f, depId, depTitle, type, mc, depth + 1, sizeGuard, progress)
         }
 
         val files = v.getJSONArray("files")
@@ -113,6 +118,7 @@ object Modrinth {
         for (i in 0 until files.length()) if (files.getJSONObject(i).optBoolean("primary")) pick = files.getJSONObject(i)
         val name = File(pick.getString("filename")).name
         if (!name.endsWith(".jar", ignoreCase = true)) error("$title ships as ${name.substringAfterLast('.')}, not a .jar")
+        sizeGuard?.invoke(title, pick.optLong("size"))
         val target = dir(f, type).apply { mkdirs() }
         val dest = File(target, name)
 

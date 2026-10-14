@@ -143,7 +143,7 @@ object Updater {
                         o.write(buf, 0, n); md.update(buf, 0, n); done += n
                         if (done > m.size + 1024) error("The update is bigger than expected.")
                         val pct = (done * 100 / m.size).toInt().coerceIn(0, 100)
-                        if (pct != last) { last = pct; _state.value = UpdateState.Downloading(m, pct) }
+                        if (pct != last) { last = pct; DataMeter.sample(); _state.value = UpdateState.Downloading(m, pct) }
                     }
                 }
             }

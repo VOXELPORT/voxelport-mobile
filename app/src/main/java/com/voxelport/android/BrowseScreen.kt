@@ -17,6 +17,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -67,6 +69,11 @@ private fun compact(n: Long) = when {
 @Composable
 fun BrowseScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
+    val prefs = remember { Prefs(ctx) }
+    val net by DataMeter.net.collectAsStateWithLifecycle()
+    // Set after a "this one is big" warning, so tapping INSTALL again goes ahead.
+    var bigOk by remember { mutableStateOf<String?>(null) }
     val type = files.type
     val mc = files.version
     val noun = Modrinth.noun(type)
@@ -97,8 +104,8 @@ fun BrowseScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: ()
         loading = false
     }
 
-    // Search as you type (and when the filter changes).
-    LaunchedEffect(query, anyVersion) { delay(if (query.isEmpty()) 0 else 400); load(0) }
+    // Search as you type (and when the filter changes). On mobile data wait for a longer pause, so fewer searches are sent.
+    LaunchedEffect(query, anyVersion) { delay(if (query.isEmpty()) 0 else if (DataMeter.net.value.metered) 900 else 400); load(0) }
 
     Column(Modifier.fillMaxSize().background(Paper).systemBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -106,6 +113,11 @@ fun BrowseScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: ()
             TextButton(onBack) { Text("Done") }
         }
         Text("From Modrinth · ${type.replaceFirstChar { it.uppercase() }} ${mc.ifEmpty { "" }}", color = Muted, fontSize = 13.sp)
+        if (net.metered) Text(
+            if (prefs.dataLimitMb == DataLogic.WIFI_ONLY) "On mobile data, and VoxelPort is set to Wi‑Fi only: connect to Wi‑Fi to install."
+            else "On mobile data: pictures are hidden to save data, and big downloads ask first.",
+            color = Ink, fontSize = 12.sp,
+        )
 
         TabRow(if (tab == "browse") 0 else 1, containerColor = Paper, contentColor = Ink) {
             Tab(tab == "browse", { tab = "browse" }, text = { Text("BROWSE", fontWeight = FontWeight.Black) })
@@ -142,7 +154,7 @@ fun BrowseScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: ()
                 items(hits, key = { it.id }) { h ->
                     val done = installed.any { it.id == h.id }
                     Row(Modifier.fillMaxWidth().background(Card).border(2.dp, Ink).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(h.icon)
+                        Icon(if (net.metered) null else h.icon) // pictures are most of what a search downloads
                         Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
                             Text(h.title, fontWeight = FontWeight.Black, color = Ink, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("${h.author} · ${compact(h.downloads)} downloads", color = Muted, fontSize = 11.sp)
@@ -151,12 +163,23 @@ fun BrowseScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: ()
                         }
                         Button(
                             {
-                                scope.launch {
+                                val check = DataLogic.downloadCheck(prefs.dataLimitMb, net.metered)
+                                if (check == DataLogic.DownloadCheck.BLOCKED) {
+                                    note = "VoxelPort is set to Wi‑Fi only and you're on mobile data. Connect to Wi‑Fi to install ${h.title}."
+                                } else scope.launch {
                                     working = h.id; progress = "Starting…"; note = ""
+                                    // On mobile data a file over a few MB asks first (tap INSTALL again to go ahead).
+                                    val askIfBig: (String, Long) -> Unit = { t, b ->
+                                        if (b > DataLogic.BIG_DOWNLOAD_MB * DataLogic.MB) throw BigDownload(t, b)
+                                    }
+                                    val guard = if (check == DataLogic.DownloadCheck.ASK && bigOk != h.id) askIfBig else null
                                     try {
-                                        val names = withContext(Dispatchers.IO) { Modrinth.install(files, h.id, h.title, type, mc) { progress = it } }
+                                        val names = withContext(Dispatchers.IO) { Modrinth.install(files, h.id, h.title, type, mc, 0, guard) { progress = it } }
                                         installedTick++; changed = true
                                         note = "Installed ${names.joinToString(", ")}."
+                                    } catch (e: BigDownload) {
+                                        bigOk = h.id
+                                        note = e.message ?: "Big download"
                                     } catch (e: Exception) {
                                         note = e.message ?: "Install failed"
                                     }

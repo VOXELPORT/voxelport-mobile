@@ -107,6 +107,63 @@ class TuningTest {
         assertTrue(File(server, "bukkit.yml").readText().contains("monsters: 99"))
     }
 
+    @Test fun dataSaverShrinksTheWorldSentToEachPlayerAtEveryLevel() {
+        for (l in Tuning.Level.values()) {
+            val normal = Tuning.profileProps(l)
+            val saver = Tuning.profileProps(l, saver = true)
+            fun n(m: Map<String, String>, k: String) = m[k]!!.toInt()
+            assertTrue("view distance shrinks ($l)", n(saver, "view-distance") < n(normal, "view-distance"))
+            assertTrue("fewer entity updates ($l)", n(saver, "entity-broadcast-range-percentage") < n(normal, "entity-broadcast-range-percentage"))
+            assertTrue("simulation <= view ($l)", n(saver, "simulation-distance") <= n(saver, "view-distance"))
+            assertTrue("never below vanilla's minimum of 3 ($l)", n(saver, "view-distance") >= 3 && n(saver, "simulation-distance") >= 3)
+        }
+        // A new server installed with the saver on starts that way, and stays premium-only.
+        assertEquals("4", Tuning.initialProps(Tuning.Level.BALANCED, saver = true)["view-distance"])
+        assertEquals("true", Tuning.initialProps(Tuning.Level.BALANCED, saver = true)["online-mode"])
+    }
+
+    @Test fun dataSaverAppliesOnceAndCanBeTurnedOffAgain() {
+        val server = tmp()
+        File(server, "server.properties").writeText("motd=Hi\n")
+        File(server, "config").mkdirs()
+        File(server, "config/paper-global.yml").writeText("chunk-system:\n  io-threads: -1\n  worker-threads: -1\n")
+        File(server, "spigot.yml").writeText(
+            "world-settings:\n  default:\n    entity-tracking-range:\n      players: 48\n      animals: 48\n      monsters: 48\n      misc: 32\n      other: 64\n",
+        )
+        Tuning.prepare(server, Tuning.Level.BALANCED, saver = true)
+        var p = ServerProps.read(File(server, "server.properties"))
+        assertEquals("4", p["view-distance"])
+        assertEquals("50", p["entity-broadcast-range-percentage"])
+        var spigot = File(server, "spigot.yml").readText()
+        for (line in listOf("players: 32", "animals: 24", "monsters: 32", "misc: 16", "other: 32")) assertTrue(line, spigot.contains(line))
+        val marks = File(server, "voxelport-tuning.txt").readText()
+        assertTrue(marks.contains("props=balanced+saver") && marks.contains("yaml=balanced+saver"))
+
+        // Same setting again: a hand edit is left alone.
+        ServerProps.write(File(server, "server.properties"), mapOf("view-distance" to "5"))
+        Tuning.prepare(server, Tuning.Level.BALANCED, saver = true)
+        assertEquals("5", ServerProps.read(File(server, "server.properties"))["view-distance"])
+
+        // Saver off: the level's own distances and Spigot's own ranges come back.
+        Tuning.prepare(server, Tuning.Level.BALANCED, saver = false)
+        p = ServerProps.read(File(server, "server.properties"))
+        assertEquals("6", p["view-distance"])
+        assertEquals("80", p["entity-broadcast-range-percentage"])
+        spigot = File(server, "spigot.yml").readText()
+        for (line in listOf("players: 48", "animals: 48", "monsters: 48", "misc: 32", "other: 64")) assertTrue(line, spigot.contains(line))
+        assertEquals("Hi", p["motd"])
+    }
+
+    @Test fun applyPropsMarksTheSaverSoPrepareDoesNotRedoIt() {
+        val server = tmp()
+        File(server, "server.properties").writeText("motd=Hi\n")
+        Tuning.applyProps(server, Tuning.Level.LOW, saver = true)
+        assertEquals("3", ServerProps.read(File(server, "server.properties"))["view-distance"])
+        ServerProps.write(File(server, "server.properties"), mapOf("view-distance" to "5"))
+        Tuning.prepare(server, Tuning.Level.LOW, saver = true) // already applied
+        assertEquals("5", ServerProps.read(File(server, "server.properties"))["view-distance"])
+    }
+
     @Test fun prepareSurvivesAMissingServerFolder() {
         Tuning.prepare(File("/no/such/folder"), Tuning.Level.BALANCED) // must not throw
     }

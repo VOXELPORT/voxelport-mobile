@@ -59,6 +59,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+        DataMeter.init(applicationContext)
         setContent { VpTheme { App() } }
     }
 }
@@ -74,6 +75,16 @@ private fun App() {
     val update by Updater.state.collectAsStateWithLifecycle()
     // Look for an app update when the app opens (at most every 6 hours; the footer button forces it).
     LaunchedEffect(Unit) { Updater.check(ctx) }
+
+    // Data use: which connection we're on, what was used today, and the user's limit.
+    val net by DataMeter.net.collectAsStateWithLifecycle()
+    val usage by DataMeter.usage.collectAsStateWithLifecycle()
+    var limitMb by remember { mutableIntStateOf(prefs.dataLimitMb) }
+    var saver by remember { mutableStateOf(prefs.dataSaver) }
+    var ask by remember { mutableStateOf<DataAsk?>(null) }
+    var publicAsk by remember { mutableStateOf(false) }
+    var saverWithPublic by remember { mutableStateOf(true) }
+    val hostCheck = DataLogic.hostCheck(limitMb, usage.bonusMb, usage.mobile, net.metered)
 
     var busy by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
@@ -123,7 +134,7 @@ private fun App() {
         var pos = 0L
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
-                val a = withContext(Dispatchers.IO) { ServerService.isAlive(ctx) }
+                val a = withContext(Dispatchers.IO) { DataMeter.sample(); ServerService.isAlive(ctx) }
                 alive = a
                 status = if (a) withContext(Dispatchers.IO) { Mobile.pingLocal(25565).takeIf { it.isNotEmpty() }?.let { JSONObject(it) } } else null
                 val (lines, p) = withContext(Dispatchers.IO) { tail(files.log.path, pos) }
@@ -151,18 +162,21 @@ private fun App() {
                     error("Not enough free storage: VoxelPort needs about 1.2 GB free (this phone has ${ctx.filesDir.usableSpace / 1_000_000} MB). Free some space and try again.")
                 Setup.installJre(ctx, files) { busy = it }
                 val v = prefs.version.ifEmpty { Setup.versionsFor(type, 1).firstOrNull() ?: error("No $type versions found") }
-                if (!files.serverReady || version != v || files.type != type) {
+                val serverChanged = !files.serverReady || version != v || files.type != type
+                if (serverChanged) {
                     if (type == "fabric") Setup.installFabric(files, v) { busy = it } else Setup.installPaper(files, v) { busy = it }
                 }
-                Setup.removeBedrock(files)
-                if (bedrock) {
+                // On mobile data, don't fetch Geyser and Floodgate again when they're already there and the server didn't change.
+                val keepBedrock = bedrock && !serverChanged && DataMeter.net.value.metered && files.bedrockComplete
+                if (!keepBedrock) Setup.removeBedrock(files)
+                if (bedrock && !keepBedrock) {
                     if (type == "fabric") {
                         // Bedrock on Fabric: Geyser + Floodgate (and Fabric API) from Modrinth.
                         for ((id, name) in listOf("P7dR8mSH" to "Fabric API", "wKkoqHrH" to "Geyser", "bWrNNfkb" to "Floodgate"))
                             if (!Modrinth.isInstalled(files, id)) Modrinth.install(files, id, name, "fabric", v) { busy = it }
                     } else Setup.installBedrock(files) { busy = it }
                 }
-                Setup.writeServerFiles(files, Tuning.resolve(prefs.profile, device))
+                Setup.writeServerFiles(files, Tuning.resolve(prefs.profile, device), prefs.dataSaver)
                 version = v
                 pickVersion = v
             }
@@ -175,13 +189,48 @@ private fun App() {
         busy = ""
     }
 
+    // About how much setting up will download (0 = nothing, so there's nothing to ask about).
+    fun installMb(): Int {
+        val needsJar = !installed || type != installedType || prefs.version.isEmpty() || prefs.version != version
+        return when {
+            needsJar -> DataLogic.installEstimateMb(type == "fabric", bedrock)
+            bedrock && !files.bedrockComplete -> 25
+            else -> 0
+        }
+    }
+
+    // On mobile data, ask before a big download (or refuse it when the user chose Wi-Fi only).
+    fun installWithData() {
+        val mb = installMb()
+        val a = if (mb > 0) downloadAsk(limitMb, net.metered, usage.mobile, "Setting up your server", mb) { install() } else null
+        if (a == null) install() else ask = a
+    }
+
     fun startServer() = ServerService.send(ctx, ServerService.ACTION_START) { putExtra(ServerService.EXTRA_RAM_MB, ram.toInt()) }
 
+    fun askBatteryOptimization() {
+        if (!ctx.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(ctx.packageName)) {
+            ctx.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${ctx.packageName}")))
+        }
+    }
+
+    fun makePublic() {
+        askBatteryOptimization()
+        TunnelService.send(ctx, TunnelService.ACTION_START) { putExtra(TunnelService.EXTRA_BEDROCK, bedrock) }
+    }
+
+    // Data saver: a smaller world around each player. server.properties changes at once (like the
+    // performance buttons); the rest applies from the next start.
+    fun applySaver(on: Boolean) {
+        saver = on; prefs.dataSaver = on
+        if (installed) runCatching { Tuning.applyProps(files.server, Tuning.resolve(prefs.profile, device), on) }
+    }
+
     // Restart: fully stop the server (and tunnel), wait for the :jvm process to
-    // die, start again — and if it was public, make it public again.
-    fun restart() = scope.launch {
+    // die, start again — and if it was public (or [forcePublic]), make it public again.
+    fun restart(forcePublic: Boolean = false) = scope.launch {
         if (!alive) return@launch
-        val wasPublic = tunnel.on
+        val wasPublic = tunnel.on || forcePublic
         error = ""; busy = "Restarting…"
         ServerService.send(ctx, ServerService.ACTION_STOP)
         withContext(Dispatchers.IO) { var n = 0; while (ServerService.isAlive(ctx) && n < 150) { delay(400); n++ } }
@@ -214,6 +263,7 @@ private fun App() {
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 UpdateBanner(update, alive)
+                MobileDataBanner(net)
 
                 // ── Header ──
                 val st = status
@@ -237,7 +287,8 @@ private fun App() {
                         if (installed) TextButton({ setupOpen = !setupOpen }) { Text(if (setupOpen) "Hide setup" else "Setup") }
                     }
                     Text(
-                        if (installed) "${type.replaceFirstChar { it.uppercase() }} $version · Java 25" else "Downloads ${type.replaceFirstChar { it.uppercase() }} and Java 25 (about 60 MB). Use Wi‑Fi.",
+                        if (installed) "${type.replaceFirstChar { it.uppercase() }} $version · Java 25"
+                        else "Sets up ${type.replaceFirstChar { it.uppercase() }} (Java 25 is already inside the app). It downloads about ${DataLogic.installEstimateMb(type == "fabric", bedrock)} MB: use Wi‑Fi if you can.",
                         color = VP.Muted, fontSize = 14.sp,
                     )
                     if (busy.isNotEmpty()) {
@@ -249,7 +300,7 @@ private fun App() {
                     // Primary action.
                     when {
                         !installed -> {
-                            VpButton("INSTALL", VP.Grass, Modifier.fillMaxWidth(), enabled = busy.isEmpty() && eula) { install() }
+                            VpButton("INSTALL", VP.Grass, Modifier.fillMaxWidth(), enabled = busy.isEmpty() && eula) { installWithData() }
                             if (!eula) Text("Tick the EULA below to continue.", color = VP.Muted, fontSize = 12.sp)
                         }
                         !alive -> VpButton("START SERVER", VP.Grass, Modifier.fillMaxWidth(), enabled = eula && busy.isEmpty()) { startServer() }
@@ -341,7 +392,7 @@ private fun App() {
                                     )
                                 }
                             }
-                            if (installed) VpButton("UPDATE / REPAIR", VP.Gold, Modifier.fillMaxWidth(), enabled = busy.isEmpty() && !alive && eula) { install() }
+                            if (installed) VpButton("UPDATE / REPAIR", VP.Gold, Modifier.fillMaxWidth(), enabled = busy.isEmpty() && !alive && eula) { installWithData() }
                         }
                     }
                 }
@@ -353,13 +404,25 @@ private fun App() {
                     PanelTitle("PUBLIC ADDRESS")
                     if (!tunnel.on) {
                         Text("Friends anywhere can join, even on Jio/Airtel or mobile data. No port forwarding.", color = VP.Muted, fontSize = 14.sp)
-                        VpButton("MAKE PUBLIC", VP.Diamond, Modifier.fillMaxWidth(), enabled = alive) {
-                            if (!ctx.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(ctx.packageName)) {
-                                ctx.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${ctx.packageName}")))
-                            }
-                            TunnelService.send(ctx, TunnelService.ACTION_START) { putExtra(TunnelService.EXTRA_BEDROCK, bedrock) }
+                        VpButton("MAKE PUBLIC", VP.Diamond, Modifier.fillMaxWidth(), enabled = alive && hostCheck == DataLogic.HostCheck.OK) {
+                            // On mobile data every player's game uses your plan: say so first.
+                            if (net.metered) { saverWithPublic = !saver; publicAsk = true } else makePublic()
                         }
                         if (!alive) Text("Start the server first.", color = VP.Muted, fontSize = 12.sp)
+                        when (hostCheck) {
+                            DataLogic.HostCheck.WIFI_ONLY -> Text(
+                                "You're on mobile data and VoxelPort is set to Wi‑Fi only. Connect to Wi‑Fi, or change the limit under Data use below.",
+                                color = VP.Red, fontSize = 13.sp,
+                            )
+                            DataLogic.HostCheck.OVER_LIMIT -> {
+                                Text(
+                                    "Today's mobile data limit (${DataLogic.limitLabel(limitMb)}) is used up. Connect to Wi‑Fi to share your server, or add more for today.",
+                                    color = VP.Red, fontSize = 13.sp,
+                                )
+                                VpButton("ADD ${DataLogic.BONUS_MB} MB FOR TODAY", VP.Gold, Modifier.fillMaxWidth()) { DataMeter.addBonus() }
+                            }
+                            DataLogic.HostCheck.OK -> if (net.metered) Text("You're on mobile data: Wi‑Fi is better for hosting.", color = VP.Muted, fontSize = 12.sp)
+                        }
                     } else {
                         val plain = if (tunnel.port > 0) "play.voxelport.in:${tunnel.port}" else ""
                         val main = tunnel.address.ifEmpty { plain }
@@ -413,9 +476,18 @@ private fun App() {
                         }
                         if (tunnel.notice.isNotEmpty()) Text(tunnel.notice, color = VP.Muted, fontSize = 12.sp)
                         if (tunnel.error.isNotEmpty()) Text(tunnel.error, color = VP.Red, fontSize = 13.sp)
+                        Text(
+                            "Data this session: ${DataLogic.format(usage.session)}" + if (net.metered) " · on mobile data, ${DataLogic.format(usage.mobile)} today" else " · on Wi‑Fi",
+                            color = VP.Muted, fontSize = 12.sp,
+                        )
                         VpButton("STOP PUBLIC", VP.Card, Modifier.fillMaxWidth()) { TunnelService.send(ctx, TunnelService.ACTION_STOP) }
                     }
                 }
+
+                DataPanel(
+                    net, usage, limitMb, { limitMb = it; prefs.dataLimitMb = it },
+                    saver, { applySaver(it) }, installed, alive, { restart() },
+                )
 
                 // ── Console preview (the full console is its own screen) ──
                 Panel {
@@ -436,6 +508,35 @@ private fun App() {
                 Spacer(Modifier.height(12.dp))
             }
         }
+    }
+
+    ask?.let { a -> DataAskDialog(a) { ask = null } }
+    if (publicAsk) {
+        AlertDialog(
+            onDismissRequest = { publicAsk = false },
+            title = { Text("You're on mobile data") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Everything your friends do on your server goes through this phone's connection: ${DataLogic.PER_PLAYER_TEXT}.")
+                    Text(
+                        "VoxelPort has used ${DataLogic.format(usage.mobile)} on mobile data today" +
+                            (if (limitMb > 0) " of your ${DataLogic.limitLabel(limitMb)} limit and stops sharing when it's reached." else "."),
+                    )
+                    Text("Wi‑Fi is much better for hosting: it's free and doesn't touch your plan.", fontWeight = FontWeight.Bold)
+                    if (!saver) Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(saverWithPublic, { saverWithPublic = it })
+                        Text("Turn on Data saver (restarts the server first)", fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton({
+                    publicAsk = false
+                    if (!saver && saverWithPublic) { applySaver(true); askBatteryOptimization(); restart(forcePublic = true) } else makePublic()
+                }) { Text("Make public") }
+            },
+            dismissButton = { TextButton({ publicAsk = false; openWifiSettings(ctx) }) { Text("Wi‑Fi settings") } },
+        )
     }
 }
 

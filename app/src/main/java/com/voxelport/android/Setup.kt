@@ -136,14 +136,14 @@ object Setup {
     }
 
     /** First-run files: the EULA the user accepted, and phone-friendly defaults. */
-    fun writeServerFiles(f: Files, level: Tuning.Level) {
+    fun writeServerFiles(f: Files, level: Tuning.Level, saver: Boolean = false) {
         f.server.mkdirs()
         File(f.server, "eula.txt").writeText("# Accepted in the VoxelPort app (https://aka.ms/MinecraftEULA)\neula=true\n")
         val props = File(f.server, "server.properties")
         if (!props.exists()) {
             // First install: defaults sized for this phone (see Tuning).
-            ServerProps.write(props, Tuning.initialProps(level))
-            Tuning.markProps(f.server, level)
+            ServerProps.write(props, Tuning.initialProps(level, saver))
+            Tuning.markProps(f.server, level, saver)
         }
     }
 
@@ -190,6 +190,7 @@ object Setup {
                         val pct = if (total > 0) (done * 100 / total).toInt() else -1
                         if (pct != lastPct) {
                             lastPct = pct
+                            DataMeter.sample() // so a big download is counted as it happens, on the connection it used
                             progress(if (pct >= 0) "Downloading $label… $pct%" else "Downloading $label… ${done / 1_000_000} MB")
                         }
                     }

@@ -42,6 +42,16 @@ class Prefs(private val ctx: Context) {
         get() = p.getString("profile", "auto") ?: "auto"
         set(v) = p.edit().putString("profile", v).apply()
 
+    /** Mobile data the app may use per day: see [DataLogic.WIFI_ONLY] / [DataLogic.UNLIMITED] / MB. */
+    var dataLimitMb: Int
+        get() = p.getInt("data_limit_mb", DataLogic.DEFAULT_LIMIT_MB)
+        set(v) = p.edit().putInt("data_limit_mb", v).apply()
+
+    /** Data saver: a smaller world around each player, so each one uses less data (see [Tuning]). */
+    var dataSaver: Boolean
+        get() = p.getBoolean("data_saver", false)
+        set(v) = p.edit().putBoolean("data_saver", v).apply()
+
     /** Server software to install: "paper" (plugins) or "fabric" (mods). */
     var type: String
         get() = p.getString("type", "paper") ?: "paper"

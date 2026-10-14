@@ -19,4 +19,10 @@ class Files(ctx: Context) {
     val jreReady get() = File(jre, "lib/libjli.so").isFile && File(jre, "release").isFile
     val serverReady get() = jar.isFile
     val bedrockReady get() = plugins.listFiles()?.any { it.name.startsWith("Geyser", ignoreCase = true) } == true
+    /** Both Geyser and Floodgate are installed (as plugins or as mods). */
+    val bedrockComplete: Boolean
+        get() {
+            val names = listOf(plugins, mods).flatMap { dir -> dir.listFiles()?.map { it.name.lowercase() } ?: emptyList() }
+            return names.any { it.startsWith("geyser") } && names.any { it.startsWith("floodgate") }
+        }
 }

@@ -36,11 +36,14 @@ class ServerService : Service() {
         val f = Files(this)
         f.tmp.mkdirs()
         val device = deviceOf(this)
-        val profile = Prefs(this).profile
+        val prefs = Prefs(this)
+        val profile = prefs.profile
+        val saver = prefs.dataSaver
         thread(name = "minecraft-server") {
             // Fit the server to this phone (view distance, mob limits, threads) and pick JVM flags for it.
+            // Data saver also shrinks the world sent to each player, so hosting uses less data.
             val level = Tuning.resolve(profile, device)
-            runCatching { Tuning.prepare(f.server, level) }
+            runCatching { Tuning.prepare(f.server, level, saver) }
             val args = (
                 Tuning.jvmFlags(level, ramMb, device) + listOf(
                     "-Djava.io.tmpdir=${f.tmp.path}",

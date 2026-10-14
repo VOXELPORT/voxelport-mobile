@@ -26,6 +26,16 @@ fun UpdateBanner(state: UpdateState, serverRunning: Boolean) {
     // "Later" hides it for this launch only.
     var hidden by remember(state) { mutableStateOf(false) }
     val show = !hidden && state !is UpdateState.Idle && state !is UpdateState.Checking && state !is UpdateState.UpToDate
+    var ask by remember { mutableStateOf<DataAsk?>(null) }
+
+    // The update is a ~50 MB download: on mobile data, ask first (or refuse if the user chose Wi-Fi only).
+    fun update(m: UpdateLogic.Manifest?) {
+        val net = DataMeter.net.value
+        val mb = ((m?.size ?: 0L) / DataLogic.MB).toInt().coerceAtLeast(1)
+        val a = downloadAsk(Prefs(ctx).dataLimitMb, net.metered, DataMeter.usage.value.mobile, "The VoxelPort update", mb) { Updater.install(ctx) }
+        if (a == null) Updater.install(ctx) else ask = a
+    }
+    ask?.let { a -> DataAskDialog(a) { ask = null } }
 
     AnimatedVisibility(show || state is UpdateState.UpToDate) {
         Column(
@@ -38,12 +48,12 @@ fun UpdateBanner(state: UpdateState, serverRunning: Boolean) {
                     Text("UPDATE AVAILABLE", fontWeight = FontWeight.Black, fontSize = 15.sp, color = VP.Ink)
                     if (m.notes.isNotBlank()) Text(m.notes, fontSize = 14.sp, color = VP.Ink)
                     Text(
-                        "%.0f MB".format(m.size / 1_000_000.0) + if (Updater.metered(ctx)) " · you're on mobile data" else "",
+                        "%.0f MB".format(m.size / 1_000_000.0) + if (Updater.metered(ctx)) " · you're on mobile data: Wi‑Fi is better for this" else "",
                         fontSize = 12.sp, color = VP.Ink,
                     )
                     if (serverRunning) Text("Your server will be saved and stopped while the app updates.", fontSize = 12.sp, color = VP.Ink)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        VpButton("UPDATE NOW", VP.Ink, Modifier.weight(1f)) { Updater.install(ctx) }
+                        VpButton("UPDATE NOW", VP.Ink, Modifier.weight(1f)) { update(m) }
                         VpButton("LATER", VP.Card, Modifier.weight(1f)) { hidden = true }
                     }
                 }
@@ -60,13 +70,14 @@ fun UpdateBanner(state: UpdateState, serverRunning: Boolean) {
                 is UpdateState.NeedsPermission -> {
                     Text("ONE QUICK STEP", fontWeight = FontWeight.Black, fontSize = 15.sp, color = VP.Ink)
                     Text("Android needs you to allow VoxelPort to install updates. Switch on “Allow from this source”, come back, and tap Update again.", fontSize = 14.sp, color = VP.Ink)
+                    // Already agreed to the download; this is just the second tap after the Android settings screen.
                     VpButton("UPDATE NOW", VP.Ink, Modifier.fillMaxWidth()) { Updater.install(ctx) }
                 }
                 is UpdateState.Failed -> {
                     Text("UPDATE PROBLEM", fontWeight = FontWeight.Black, fontSize = 15.sp, color = VP.Red)
                     Text(state.message, fontSize = 14.sp, color = VP.Ink)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (state.m != null) VpButton("TRY AGAIN", VP.Gold, Modifier.weight(1f)) { Updater.install(ctx) }
+                        if (state.m != null) VpButton("TRY AGAIN", VP.Gold, Modifier.weight(1f)) { update(state.m) }
                         VpButton("CLOSE", VP.Card, Modifier.weight(1f)) { Updater.dismiss() }
                     }
                 }
