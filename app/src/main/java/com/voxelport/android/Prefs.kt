@@ -31,6 +31,11 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("eula", false)
         set(v) = p.edit().putBoolean("eula", v).apply()
 
+    /** Server software to install: "paper" (plugins) or "fabric" (mods). */
+    var type: String
+        get() = p.getString("type", "paper") ?: "paper"
+        set(v) = p.edit().putString("type", v).apply()
+
     /** Minecraft/Paper version to install; empty means "latest". */
     var version: String
         get() = p.getString("version", "") ?: ""

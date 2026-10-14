@@ -60,6 +60,45 @@ object Setup {
         return out.take(limit)
     }
 
+    private const val FABRIC = "https://meta.fabricmc.net/v2/versions"
+
+    /** Stable Minecraft versions Fabric supports, newest first. */
+    fun fabricVersions(limit: Int = 12): List<String> {
+        val arr = getJsonArray("$FABRIC/game")
+        val out = ArrayList<String>()
+        for (i in 0 until arr.length()) {
+            val g = arr.getJSONObject(i)
+            if (g.optBoolean("stable")) out.add(g.getString("version"))
+        }
+        return out.take(limit)
+    }
+
+    fun versionsFor(type: String, limit: Int = 12) = if (type == "fabric") fabricVersions(limit) else paperVersions(limit)
+
+    /** Fabric's server launcher jar for [version] (it fetches the vanilla server on first start). */
+    fun installFabric(f: Files, version: String, progress: (String) -> Unit) {
+        progress("Finding Fabric for $version…")
+        val loaders = getJsonArray("$FABRIC/loader/$version")
+        var loader = ""
+        for (i in 0 until loaders.length()) {
+            val l = loaders.getJSONObject(i).getJSONObject("loader")
+            if (l.optBoolean("stable")) { loader = l.getString("version"); break }
+        }
+        if (loader.isEmpty()) error("Fabric doesn't support Minecraft $version yet")
+        val installers = getJsonArray("$FABRIC/installer")
+        var installer = ""
+        for (i in 0 until installers.length()) {
+            val ins = installers.getJSONObject(i)
+            if (ins.optBoolean("stable")) { installer = ins.getString("version"); break }
+        }
+        if (installer.isEmpty()) error("Couldn't find the Fabric installer")
+        f.server.mkdirs()
+        download("$FABRIC/loader/$version/$loader/$installer/server/jar", f.jar, null, "Fabric $version", progress)
+        File(f.server, "voxelport-version.txt").writeText(version)
+        File(f.server, "voxelport-type.txt").writeText("fabric")
+        f.mods.mkdirs()
+    }
+
     /** Latest stable Paper release (skips -rc/-pre versions). */
     fun latestPaperVersion(): String = paperVersions(1).firstOrNull() ?: error("PaperMC returned no versions")
 
@@ -77,6 +116,7 @@ object Setup {
         f.server.mkdirs()
         download(dl.getString("url"), f.jar, dl.getJSONObject("checksums").getString("sha256"), "Paper $version", progress)
         File(f.server, "voxelport-version.txt").writeText(version)
+        File(f.server, "voxelport-type.txt").writeText("paper")
     }
 
     /** Geyser + Floodgate let Bedrock (phone/console) players join. */
@@ -92,7 +132,7 @@ object Setup {
     }
 
     fun removeBedrock(f: Files) {
-        f.plugins.listFiles()?.filter { it.name.startsWith("geyser", true) || it.name.startsWith("floodgate", true) }?.forEach { it.delete() }
+        for (d in listOf(f.plugins, f.mods)) d.listFiles()?.filter { it.name.startsWith("geyser", true) || it.name.startsWith("floodgate", true) }?.forEach { it.delete() }
     }
 
     /** First-run files: the EULA the user accepted, and phone-friendly defaults. */
@@ -116,7 +156,7 @@ object Setup {
         }
     }
 
-    private fun open(url: String): HttpURLConnection =
+    internal fun open(url: String): HttpURLConnection =
         (URL(url).openConnection() as HttpURLConnection).apply {
             setRequestProperty("User-Agent", UA)
             connectTimeout = 15000
@@ -124,7 +164,7 @@ object Setup {
             instanceFollowRedirects = true
         }
 
-    private fun getText(url: String): String {
+    internal fun getText(url: String): String {
         val c = open(url)
         try {
             if (c.responseCode !in 200..299) error("HTTP ${c.responseCode} from ${URL(url).host}")
@@ -134,16 +174,17 @@ object Setup {
         }
     }
 
-    private fun getJson(url: String) = JSONObject(getText(url))
-    private fun getJsonArray(url: String) = org.json.JSONArray(getText(url))
+    internal fun getJson(url: String) = JSONObject(getText(url))
+    internal fun getJsonArray(url: String) = org.json.JSONArray(getText(url))
 
-    private fun download(url: String, dest: File, sha256: String, label: String, progress: (String) -> Unit) {
+    /** Downloads [url] to [dest]; when [hash] is given it must match ([algo], e.g. SHA-256 / SHA-512). */
+    internal fun download(url: String, dest: File, hash: String?, label: String, progress: (String) -> Unit, algo: String = "SHA-256") {
         val part = File(dest.path + ".part")
         val c = open(url)
         try {
             if (c.responseCode !in 200..299) error("HTTP ${c.responseCode} downloading $label")
             val total = c.contentLengthLong
-            val md = MessageDigest.getInstance("SHA-256")
+            val md = MessageDigest.getInstance(algo)
             c.inputStream.use { input ->
                 part.outputStream().use { out ->
                     val buf = ByteArray(1 shl 16)
@@ -164,7 +205,7 @@ object Setup {
                 }
             }
             val got = md.digest().joinToString("") { "%02x".format(it) }
-            if (!got.equals(sha256, ignoreCase = true)) {
+            if (hash != null && !got.equals(hash, ignoreCase = true)) {
                 part.delete()
                 error("$label download was corrupted (checksum mismatch). Try again.")
             }

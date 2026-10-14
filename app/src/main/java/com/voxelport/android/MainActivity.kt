@@ -85,6 +85,7 @@ private fun App() {
     var versions by remember { mutableStateOf<List<String>>(emptyList()) }
     var pickVersion by remember { mutableStateOf(prefs.version.ifEmpty { version }) }
     var showVersions by remember { mutableStateOf(false) }
+    var type by remember { mutableStateOf(if (files.serverReady) files.type else prefs.type) }
 
     val totalMb = remember {
         val mi = ActivityManager.MemoryInfo()
@@ -113,9 +114,18 @@ private fun App() {
         try {
             withContext(Dispatchers.IO) {
                 Setup.installJre(ctx, files) { busy = it }
-                val v = prefs.version.ifEmpty { Setup.latestPaperVersion() }
-                if (!files.serverReady || version != v) Setup.installPaper(files, v) { busy = it }
-                if (bedrock) Setup.installBedrock(files) { busy = it } else Setup.removeBedrock(files)
+                val v = prefs.version.ifEmpty { Setup.versionsFor(type, 1).firstOrNull() ?: error("No $type versions found") }
+                if (!files.serverReady || version != v || files.type != type) {
+                    if (type == "fabric") Setup.installFabric(files, v) { busy = it } else Setup.installPaper(files, v) { busy = it }
+                }
+                Setup.removeBedrock(files)
+                if (bedrock) {
+                    if (type == "fabric") {
+                        // Bedrock on Fabric: Geyser + Floodgate (and Fabric API) from Modrinth.
+                        for ((id, name) in listOf("P7dR8mSH" to "Fabric API", "wKkoqHrH" to "Geyser", "bWrNNfkb" to "Floodgate"))
+                            if (!Modrinth.isInstalled(files, id)) Modrinth.install(files, id, name, "fabric", v) { busy = it }
+                    } else Setup.installBedrock(files) { busy = it }
+                }
                 Setup.writeServerFiles(files)
                 version = v
                 pickVersion = v
@@ -144,9 +154,11 @@ private fun App() {
         busy = ""
     }
 
-    if (screen == "files") {
-        FilesScreen(files.server, alive) { screen = "main" }
-        return
+    androidx.activity.compose.BackHandler(enabled = screen != "main") { screen = "main" }
+    when (screen) {
+        "files" -> { FilesScreen(files.server, alive) { screen = "main" }; return }
+        "settings" -> { SettingsScreen(files, alive, { screen = "main" }) { restart() }; return }
+        "browse" -> { BrowseScreen(files, alive, { screen = "main" }) { restart() }; return }
     }
 
     Column(
@@ -160,7 +172,7 @@ private fun App() {
         Panel {
             Text("1 · SERVER", fontWeight = FontWeight.Black, color = Ink)
             Text(
-                if (installed) "Paper $version + Java 25 installed" else "Downloads Paper (latest) and sets up Java 25. About 60 MB.",
+                if (installed) "${type.replaceFirstChar { it.uppercase() }} $version + Java 25 installed" else "Downloads ${type.replaceFirstChar { it.uppercase() }} (latest) and sets up Java 25. About 60 MB.",
                 color = Muted, fontSize = 14.sp,
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -189,7 +201,11 @@ private fun App() {
                     Btn("RESTART", Gold, enabled = busy.isEmpty()) { restart() }
                 }
             }
-            Btn("FILES · PLUGINS / MODS", Card, enabled = installed) { screen = "files" }
+            Btn(if (type == "fabric") "ADD MODS (MODRINTH)" else "ADD PLUGINS (MODRINTH)", Grass, enabled = installed) { screen = "browse" }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Btn("SETTINGS", Card, enabled = installed) { screen = "settings" }
+                Btn("FILES", Card, enabled = installed) { screen = "files" }
+            }
             val st = status
             Text(
                 when {
@@ -207,7 +223,19 @@ private fun App() {
                 TextButton({ showVersions = !showVersions }, enabled = !alive && busy.isEmpty()) { Text(if (showVersions) "Hide" else "Change") }
             }
             if (showVersions) {
-                LaunchedEffect(Unit) { if (versions.isEmpty()) runCatching { versions = withContext(Dispatchers.IO) { Setup.paperVersions(12) } } }
+                LaunchedEffect(type) { versions = emptyList(); runCatching { versions = withContext(Dispatchers.IO) { Setup.versionsFor(type, 12) } } }
+                Text("Server software", fontSize = 12.sp, color = Muted)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for ((t, label) in listOf("paper" to "Paper · plugins", "fabric" to "Fabric · mods")) {
+                        Box(
+                            Modifier.border(2.dp, Ink).background(if (type == t) Gold else Card)
+                                .clickable { if (type != t) { type = t; prefs.type = t; prefs.version = ""; pickVersion = "" } }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                        ) { Text(label, fontSize = 13.sp, fontWeight = if (type == t) FontWeight.Black else FontWeight.Normal, color = Ink) }
+                    }
+                }
+                if (type != files.type && files.serverReady)
+                    Text("Switching to ${type.replaceFirstChar { it.uppercase() }} keeps your world, but plugins and mods don't carry over. Tap UPDATE / REPAIR to switch.", color = Ink, fontSize = 13.sp)
                 if (versions.isEmpty()) Text("Loading versions…", color = Muted, fontSize = 13.sp)
                 FlowRowChips(versions, pickVersion) { v ->
                     pickVersion = v; prefs.version = v; showVersions = false

@@ -10,6 +10,8 @@ class Files(ctx: Context) {
     val jar = File(server, "server.jar")
     val plugins = File(server, "plugins")
     val mods = File(server, "mods")
+    /** "paper" or "fabric": which server software is installed. */
+    val type get() = File(server, "voxelport-type.txt").takeIf { it.isFile }?.readText()?.trim()?.takeIf { it == "fabric" } ?: "paper"
     val version get() = File(server, "voxelport-version.txt").takeIf { it.isFile }?.readText()?.trim() ?: ""
     val log = File(ctx.filesDir, "console.log")
     val tmp = File(ctx.cacheDir, "jvm-tmp")
