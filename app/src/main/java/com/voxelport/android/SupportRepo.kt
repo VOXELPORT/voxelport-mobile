@@ -65,7 +65,7 @@ fun tipWithUpi(ctx: Context, amountInr: Int?): String? {
         try { ctx.startActivity(intent); return null } catch (_: Exception) { /* fall through */ }
     }
     copyUpiId(ctx)
-    return "No UPI app found, so the UPI ID ${SupportLogic.UPI_ID} was copied. Paste it into any payment app, or use GitHub Sponsors."
+    return t("No UPI app found, so the UPI ID {id} was copied. Paste it into any payment app, or use GitHub Sponsors.", "id" to SupportLogic.UPI_ID)
 }
 
 fun copyUpiId(ctx: Context) {

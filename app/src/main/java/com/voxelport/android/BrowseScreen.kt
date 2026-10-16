@@ -99,7 +99,7 @@ fun BrowseScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: ()
             hits = if (offset == 0) r else hits + r
             more = r.size >= 20
         } catch (e: Exception) {
-            error = "Couldn't reach Modrinth: ${e.message}"
+            error = t("Couldn't reach Modrinth: {detail}", "detail" to e.message)
         }
         loading = false
     }
@@ -112,7 +112,7 @@ fun BrowseScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: ()
             Text(noun.uppercase(), fontSize = 30.sp, fontWeight = FontWeight.Black, color = Ink, modifier = Modifier.weight(1f))
             TextButton(onBack) { Text("Done") }
         }
-        Text("From Modrinth · ${type.replaceFirstChar { it.uppercase() }} ${mc.ifEmpty { "" }}", color = Muted, fontSize = 13.sp)
+        Text(t("From Modrinth · {type} {version}", "type" to type.replaceFirstChar { it.uppercase() }, "version" to mc), color = Muted, fontSize = 13.sp)
         if (net.metered) Text(
             if (prefs.dataLimitMb == DataLogic.WIFI_ONLY) "On mobile data, and VoxelPort is set to Wi‑Fi only: connect to Wi‑Fi to install."
             else "On mobile data: pictures are hidden to save data, and big downloads ask first.",
@@ -121,7 +121,7 @@ fun BrowseScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: ()
 
         TabRow(if (tab == "browse") 0 else 1, containerColor = Paper, contentColor = Ink) {
             Tab(tab == "browse", { tab = "browse" }, text = { Text("BROWSE", fontWeight = FontWeight.Black) })
-            Tab(tab == "installed", { tab = "installed" }, text = { Text("INSTALLED (${installed.size})", fontWeight = FontWeight.Black) })
+            Tab(tab == "installed", { tab = "installed" }, text = { Text(t("INSTALLED ({n})", "n" to installed.size), fontWeight = FontWeight.Black) })
         }
 
         if (changed) {
@@ -138,17 +138,17 @@ fun BrowseScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: ()
         if (tab == "browse") {
             OutlinedTextField(
                 query, { query = it }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Search $noun…") },
+                placeholder = { Text(t("Search {noun}…", "noun" to noun)) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(anyVersion, { anyVersion = it })
-                Text("Show $noun for any Minecraft version", fontSize = 13.sp)
+                Text(t("Show {noun} for any Minecraft version", "noun" to noun), fontSize = 13.sp)
             }
             if (error.isNotEmpty()) Text(error, color = Red, fontSize = 13.sp)
             if (loading && hits.isEmpty()) Text("Loading…", color = Muted)
             if (!loading && hits.isEmpty() && error.isEmpty()) Text(
-                if (anyVersion) "Nothing found." else "Nothing found for Minecraft $mc. Tick the box above to see all versions.", color = Muted, fontSize = 13.sp,
+                if (anyVersion) "Nothing found." else t("Nothing found for Minecraft {version}. Tick the box above to see all versions.", "version" to mc), color = Muted, fontSize = 13.sp,
             )
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(hits, key = { it.id }) { h ->
@@ -157,7 +157,7 @@ fun BrowseScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: ()
                         Icon(if (net.metered) null else h.icon) // pictures are most of what a search downloads
                         Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
                             Text(h.title, fontWeight = FontWeight.Black, color = Ink, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("${h.author} · ${compact(h.downloads)} downloads", color = Muted, fontSize = 11.sp)
+                            Text(t("{author} · {count} downloads", "author" to h.author, "count" to compact(h.downloads)), color = Muted, fontSize = 11.sp)
                             Text(h.desc, color = Ink, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             if (working == h.id) Text(progress, color = Muted, fontSize = 11.sp)
                         }
@@ -165,18 +165,18 @@ fun BrowseScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: ()
                             {
                                 val check = DataLogic.downloadCheck(prefs.dataLimitMb, net.metered)
                                 if (check == DataLogic.DownloadCheck.BLOCKED) {
-                                    note = "VoxelPort is set to Wi‑Fi only and you're on mobile data. Connect to Wi‑Fi to install ${h.title}."
+                                    note = t("VoxelPort is set to Wi‑Fi only and you're on mobile data. Connect to Wi‑Fi to install {name}.", "name" to h.title)
                                 } else scope.launch {
                                     working = h.id; progress = "Starting…"; note = ""
                                     // On mobile data a file over a few MB asks first (tap INSTALL again to go ahead).
-                                    val askIfBig: (String, Long) -> Unit = { t, b ->
-                                        if (b > DataLogic.BIG_DOWNLOAD_MB * DataLogic.MB) throw BigDownload(t, b)
+                                    val askIfBig: (String, Long) -> Unit = { title, bytes ->
+                                        if (bytes > DataLogic.BIG_DOWNLOAD_MB * DataLogic.MB) throw BigDownload(title, bytes)
                                     }
                                     val guard = if (check == DataLogic.DownloadCheck.ASK && bigOk != h.id) askIfBig else null
                                     try {
                                         val names = withContext(Dispatchers.IO) { Modrinth.install(files, h.id, h.title, type, mc, 0, guard) { progress = it } }
                                         installedTick++; changed = true
-                                        note = "Installed ${names.joinToString(", ")}."
+                                        note = t("Installed {names}.", "names" to names.joinToString(", "))
                                     } catch (e: BigDownload) {
                                         bigOk = h.id
                                         note = e.message ?: "Big download"

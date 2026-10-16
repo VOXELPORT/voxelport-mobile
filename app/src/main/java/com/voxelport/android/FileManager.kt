@@ -74,7 +74,11 @@ fun FilesScreen(root: File, serverAlive: Boolean, onBack: () -> Unit) {
                 ok
             }
             tick++
-            msg = if (n > 0) "Added $n file${if (n == 1) "" else "s"} — restart the server to load them." else "Couldn't add those files."
+            msg = when {
+                n == 1 -> t("Added 1 file — restart the server to load it.")
+                n > 1 -> t("Added {n} files — restart the server to load them.", "n" to n)
+                else -> t("Couldn't add those files.")
+            }
         }
     }
 
@@ -116,7 +120,11 @@ fun FilesScreen(root: File, serverAlive: Boolean, onBack: () -> Unit) {
                         Text(if (f.isDirectory) "📁" else "📄", fontSize = 20.sp, modifier = Modifier.padding(end = 10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(f.name, color = Ink, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                            Text(if (f.isDirectory) "${f.listFiles()?.size ?: 0} items" else human(f.length()), color = Muted, fontSize = 12.sp)
+                            Text(
+                                if (!f.isDirectory) human(f.length())
+                                else (f.listFiles()?.size ?: 0).let { n -> if (n == 1) t("1 item") else t("{n} items", "n" to n) },
+                                color = Muted, fontSize = 12.sp,
+                            )
                         }
                         TextButton({ confirmDelete = f }) { Text("Delete", color = Red) }
                     }
@@ -128,7 +136,7 @@ fun FilesScreen(root: File, serverAlive: Boolean, onBack: () -> Unit) {
     confirmDelete?.let { f ->
         AlertDialog(
             onDismissRequest = { confirmDelete = null },
-            title = { Text("Delete ${f.name}?") },
+            title = { Text(t("Delete {name}?", "name" to f.name)) },
             text = { Text(if (f.isDirectory) "This folder and everything in it will be deleted." else "This file will be deleted.") },
             confirmButton = { TextButton({ f.deleteRecursively(); confirmDelete = null; tick++ }) { Text("Delete", color = Red) } },
             dismissButton = { TextButton({ confirmDelete = null }) { Text("Cancel") } },

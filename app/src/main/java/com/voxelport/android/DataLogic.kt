@@ -88,7 +88,9 @@ object DataLogic {
     /** About how much setting up a server downloads, including what the first start fetches. */
     fun installEstimateMb(fabric: Boolean, bedrock: Boolean): Int = (if (fabric) 70 else 110) + (if (bedrock) 25 else 0)
 
-    const val PER_PLAYER_TEXT = "about 10–50 MB per hour for each player online (much more while they explore new land)"
+    /** What one player online costs in mobile data, in a few words ("about 10–50 MB per hour…"). */
+    fun perPlayerText(lang: String = Lang.current) =
+        translate(lang, "about 10–50 MB per hour for each player online (much more while they explore new land)")
 
     // ── text ──
     fun format(bytes: Long): String = when {
@@ -101,4 +103,4 @@ object DataLogic {
 
 /** A plugin/mod download that is big enough to ask first on mobile data. */
 class BigDownload(val title: String, val bytes: Long) :
-    Exception("$title is ${DataLogic.format(bytes)}. You're on mobile data: tap INSTALL again to download it anyway, or wait for Wi‑Fi.")
+    Exception(t("{title} is {size}. You're on mobile data: tap INSTALL again to download it anyway, or wait for Wi‑Fi.", "title" to title, "size" to DataLogic.format(bytes)))

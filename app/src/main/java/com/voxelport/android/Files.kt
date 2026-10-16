@@ -14,6 +14,8 @@ class Files(ctx: Context) {
     val type get() = File(server, "voxelport-type.txt").takeIf { it.isFile }?.readText()?.trim()?.takeIf { it == "fabric" } ?: "paper"
     val version get() = File(server, "voxelport-version.txt").takeIf { it.isFile }?.readText()?.trim() ?: ""
     val log = File(ctx.filesDir, "console.log")
+    /** World backups (outside the server folder, so a server reinstall never touches them). */
+    val backups = File(ctx.filesDir, "backups")
     val tmp = File(ctx.cacheDir, "jvm-tmp")
 
     val jreReady get() = File(jre, "lib/libjli.so").isFile && File(jre, "release").isFile

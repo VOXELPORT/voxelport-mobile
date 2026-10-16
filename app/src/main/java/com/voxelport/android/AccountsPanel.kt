@@ -37,7 +37,7 @@ fun AccountsPanel(files: Files, alive: Boolean, onRestart: () -> Unit) {
     fun set(on: Boolean) {
         runCatching {
             ServerProps.write(propsFile, mapOf("online-mode" to (!on).toString(), "enforce-secure-profile" to (!on).toString()))
-        }.onSuccess { cracked = on; changed = true; msg = "" }.onFailure { msg = "Couldn't save: ${it.message}" }
+        }.onSuccess { cracked = on; changed = true; msg = "" }.onFailure { msg = t("Couldn't save: {detail}", "detail" to it.message) }
     }
 
     Panel {
@@ -86,12 +86,12 @@ fun AccountsPanel(files: Files, alive: Boolean, onRestart: () -> Unit) {
             onDismissRequest = { confirm = false },
             title = { Text("Allow cracked players?") },
             text = {
-                Text(
-                    "This turns off Minecraft's account check, so people without a paid account can join.\n\n" +
-                        "• Anyone can join with any name — including yours or an admin's — unless you use the whitelist or a login plugin.\n" +
-                        "• Switching changes every player's ID. Existing inventories, ops and whitelist entries made in the other mode won't match.\n" +
-                        "• Skins may not show for cracked players.",
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("This turns off Minecraft's account check, so people without a paid account can join.")
+                    Text("• Anyone can join with any name — including yours or an admin's — unless you use the whitelist or a login plugin.")
+                    Text("• Switching changes every player's ID. Existing inventories, ops and whitelist entries made in the other mode won't match.")
+                    Text("• Skins may not show for cracked players.")
+                }
             },
             confirmButton = { TextButton({ confirm = false; set(true) }) { Text("Allow cracked") } },
             dismissButton = { TextButton({ confirm = false }) { Text("Cancel") } },

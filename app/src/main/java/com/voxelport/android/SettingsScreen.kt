@@ -62,7 +62,7 @@ fun SettingsScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: 
         for (k in listOf("motd", "gamemode", "difficulty", "level-seed")) out[k] = v[k] ?: ""
         // Hardcore worlds are always hard difficulty.
         if (out["hardcore"] == "true") out["difficulty"] = "hard"
-        return runCatching { ServerProps.write(file, out) }.onFailure { msg = "Couldn't save: ${it.message}" }.isSuccess
+        return runCatching { ServerProps.write(file, out) }.onFailure { msg = t("Couldn't save: {detail}", "detail" to it.message) }.isSuccess
     }
 
     Column(
@@ -80,7 +80,7 @@ fun SettingsScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: 
         // Performance: fit the server to this phone.
         Panel {
             PanelTitle("PERFORMANCE")
-            Text("This phone: ${"%.1f".format(device.ramMb / 1024f)} GB RAM · ${device.cores} cores", color = Muted, fontSize = 13.sp)
+            Text(t("This phone: {ram} GB RAM · {cores} cores", "ram" to "%.1f".format(device.ramMb / 1024f), "cores" to device.cores), color = Muted, fontSize = 13.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for ((id, label) in listOf("auto" to "Auto", "low" to "Low-end", "balanced" to "Balanced", "high" to "High-end")) {
                     val sel = profile == id
@@ -89,16 +89,18 @@ fun SettingsScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: 
                         val lv = Tuning.resolve(id, device)
                         runCatching { Tuning.applyProps(files.server, lv, prefs.dataSaver) }
                         for ((k, value) in Tuning.profileProps(lv, prefs.dataSaver)) if (k in v) v[k] = value
-                        msg = "${lv.label} applied. Restart the server to use it."
+                        msg = t("{level} applied. Restart the server to use it.", "level" to t(lv.label))
                     }
                 }
             }
             Text(
-                (if (profile == "auto") "Auto chose ${level.label} for this phone. " else "") + when (level) {
-                    Tuning.Level.LOW -> "Small view distance, fewer mobs, a lighter garbage collector and fewer background threads. Best for phones with 4 GB or less."
-                    Tuning.Level.BALANCED -> "A good middle: moderate view distance and mob limits, tuned memory use. Best for most phones."
-                    Tuning.Level.HIGH -> "Bigger view distance and more mobs. For phones with 10 GB+ and good cooling."
-                },
+                (if (profile == "auto") t("Auto chose {level} for this phone.", "level" to t(level.label)) + " " else "") + t(
+                    when (level) {
+                        Tuning.Level.LOW -> "Small view distance, fewer mobs, a lighter garbage collector and fewer background threads. Best for phones with 4 GB or less."
+                        Tuning.Level.BALANCED -> "A good middle: moderate view distance and mob limits, tuned memory use. Best for most phones."
+                        Tuning.Level.HIGH -> "Bigger view distance and more mobs. For phones with 10 GB+ and good cooling."
+                    },
+                ),
                 fontSize = 13.sp, color = VP.Ink,
             )
             Text("View and simulation distance (below) change at once; the engine tuning applies from the next start.", color = Muted, fontSize = 12.sp)
@@ -112,7 +114,7 @@ fun SettingsScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: 
             for (f in INTS) {
                 OutlinedTextField(
                     v[f.key] ?: "", { s -> v[f.key] = s.filter { c -> c.isDigit() }.take(3) },
-                    label = { Text("${f.label} · ${f.min}–${f.max}") }, singleLine = true,
+                    label = { Text(t("{label} · {min}–{max}", "label" to t(f.label), "min" to f.min, "max" to f.max)) }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth(),
                 )
             }

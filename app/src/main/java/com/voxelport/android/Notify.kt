@@ -16,8 +16,9 @@ object Notify {
     private const val CHANNEL = "server"
 
     fun build(ctx: Context, title: String, text: String): Notification {
+        Lang.ensure(ctx)
         val nm = ctx.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Server running", NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, t("Server running"), NotificationManager.IMPORTANCE_LOW))
         val open = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val stop = PendingIntent.getService(
             ctx, 1, Intent(ctx, ServerService::class.java).setAction(ServerService.ACTION_STOP),
@@ -25,11 +26,11 @@ object Notify {
         )
         return Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_upload_done)
-            .setContentTitle(title)
-            .setContentText(text)
+            .setContentTitle(t(title))
+            .setContentText(t(text))
             .setContentIntent(open)
             .setOngoing(true)
-            .addAction(Notification.Action.Builder(null, "Stop server", stop).build())
+            .addAction(Notification.Action.Builder(null, t("Stop server"), stop).build())
             .build()
     }
 
@@ -43,14 +44,37 @@ object Notify {
 
     /** A one-off heads-up about data use; separate from the ongoing notification so it makes a sound and can be swiped away. */
     fun alert(ctx: Context, title: String, text: String) {
+        Lang.ensure(ctx)
         val nm = ctx.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(ALERTS, "Data use", NotificationManager.IMPORTANCE_DEFAULT))
+        nm.createNotificationChannel(NotificationChannel(ALERTS, t("Data use"), NotificationManager.IMPORTANCE_DEFAULT))
         val open = PendingIntent.getActivity(ctx, 2, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         nm.notify(
             ALERT_ID,
             Notification.Builder(ctx, ALERTS)
                 .setSmallIcon(android.R.drawable.stat_sys_warning)
-                .setContentTitle(title)
+                .setContentTitle(t(title))
+                .setContentText(t(text))
+                .setStyle(Notification.BigTextStyle().bigText(t(text)))
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .build(),
+        )
+    }
+
+    private const val ANNOUNCEMENTS = "announcements"
+    private const val ANNOUNCE_ID = 3
+
+    /** The relay operator's announcement ("the relay will restart in 10 minutes"). [text] is the operator's own wording, shown as is. */
+    fun announce(ctx: Context, title: String, text: String) {
+        Lang.ensure(ctx)
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(NotificationChannel(ANNOUNCEMENTS, t("Announcements"), NotificationManager.IMPORTANCE_DEFAULT))
+        val open = PendingIntent.getActivity(ctx, 3, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        nm.notify(
+            ANNOUNCE_ID,
+            Notification.Builder(ctx, ANNOUNCEMENTS)
+                .setSmallIcon(android.R.drawable.stat_sys_warning)
+                .setContentTitle(t(title))
                 .setContentText(text)
                 .setStyle(Notification.BigTextStyle().bigText(text))
                 .setContentIntent(open)

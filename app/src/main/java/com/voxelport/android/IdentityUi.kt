@@ -42,8 +42,7 @@ fun IdentityDialog(tunnelOn: Boolean, onClose: () -> Unit) {
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "Your public port and custom address belong to a secret code kept on this phone. If you uninstall VoxelPort, clear its data or switch phones, " +
-                        "a new code is made and the old address is left behind (supporter perks included). Copy the code to keep it.",
+                    "Your public port and custom address belong to a secret code kept on this phone. If you uninstall VoxelPort, clear its data or switch phones, a new code is made and the old address is left behind (supporter perks included). Copy the code to keep it.",
                     fontSize = 14.sp,
                 )
                 Text("Anyone who has the code can take over your address, so keep it private.", fontSize = 13.sp, fontWeight = FontWeight.Bold)

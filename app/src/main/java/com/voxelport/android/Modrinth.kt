@@ -99,7 +99,7 @@ object Modrinth {
         progress: (String) -> Unit,
     ): List<String> {
         val v = bestVersion(projectId, type, mc)
-            ?: error("$title has no ${if (type == "fabric") "Fabric" else "Paper"} version for Minecraft $mc")
+            ?: error(t("{title} has no {software} version for Minecraft {version}", "title" to title, "software" to (if (type == "fabric") "Fabric" else "Paper"), "version" to mc))
         val done = ArrayList<String>()
 
         // Required dependencies first (e.g. Fabric API for most mods).
@@ -117,7 +117,7 @@ object Modrinth {
         var pick: JSONObject = files.getJSONObject(0)
         for (i in 0 until files.length()) if (files.getJSONObject(i).optBoolean("primary")) pick = files.getJSONObject(i)
         val name = File(pick.getString("filename")).name
-        if (!name.endsWith(".jar", ignoreCase = true)) error("$title ships as ${name.substringAfterLast('.')}, not a .jar")
+        if (!name.endsWith(".jar", ignoreCase = true)) error(t("{title} ships as {ext}, not a .jar", "title" to title, "ext" to name.substringAfterLast('.')))
         sizeGuard?.invoke(title, pick.optLong("size"))
         val target = dir(f, type).apply { mkdirs() }
         val dest = File(target, name)

@@ -33,7 +33,12 @@ data class TunnelState(
     val nameError: String = "",
     /** Non-fatal heads-up from the relay (Bedrock unavailable, nothing answering on the port…). */
     val notice: String = "",
+    /** What the relay's operator announced ("the relay will restart"), until it is withdrawn or the tunnel stops. */
+    val announcement: Announcement? = null,
 )
+
+/** An announcement from the relay. [dueAtMs] is when it happens (wall clock), 0 when no time was given. */
+data class Announcement(val message: String, val dueAtMs: Long)
 
 /** Keeps the server reachable through the VoxelPort relay (Go tunnel, gomobile). */
 class TunnelService : Service() {
@@ -42,12 +47,16 @@ class TunnelService : Service() {
     private var wifi: WifiManager.WifiLock? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var dataWatch: Job? = null
+    private var noticeJob: Job? = null
+    /** The announcement last said in the game's chat, and when: a reconnect hands the same one over again. */
+    private var lastSaid: Pair<String, Long>? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         DataMeter.init(this)
+        Lang.init(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -76,8 +85,10 @@ class TunnelService : Service() {
             .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "VoxelPort:tunnel").apply { acquire() }
         val prefs = Prefs(this)
         _state.value = TunnelState(on = true, status = "Connecting…")
-        host = Mobile.start(prefs.token, 25565, if (bedrock) 19132 else 0, prefs.claimName, object : Listener {
+        host = Mobile.start("android/${Updater.installedCode(this)}", prefs.token, 25565, if (bedrock) 19132 else 0, prefs.claimName, object : Listener {
             override fun onEvent(kind: String, text: String, port: Long, name: String, address: String, pingMs: Long) {
+                // The relay's operator announcing something: "port" carries the seconds until it happens.
+                if (kind == "notice") { announce(text, port.toInt()); return }
                 _state.update { s ->
                     when (kind) {
                         "port" -> s.copy(port = port.toInt(), status = "Public", error = "")
@@ -96,6 +107,42 @@ class TunnelService : Service() {
         })
         DataMeter.beginSession()
         watchData(prefs)
+    }
+
+    /**
+     * The relay's operator announced something (or withdrew it, with an empty [text]). It shows as a banner, is said in
+     * the game's chat so players hear it too (now, 5 and 1 minutes before, and when due), and reaches the host as a
+     * notification when the app is closed.
+     */
+    private fun announce(text: String, seconds: Int) {
+        noticeJob?.cancel()
+        noticeJob = null
+        val message = NoticeLogic.chatSafe(text)
+        if (message.isEmpty()) {
+            lastSaid = null
+            _state.update { it.copy(announcement = null) }
+            return
+        }
+        val now = System.currentTimeMillis()
+        val again = lastSaid?.let { it.first == message && now - it.second < NoticeLogic.REPEAT_QUIET_MS } == true
+        if (!again) lastSaid = message to now
+        val left = seconds.coerceAtLeast(0)
+        _state.update { it.copy(announcement = Announcement(message, if (left > 0) now + left * 1000L else 0L)) }
+        if (!again) Notify.announce(this, "VoxelPort announcement", message + if (left > 0) " (" + NoticeLogic.timeLeftPhrase(left.toLong(), Lang.current) + ")" else "")
+
+        val plan = NoticeLogic.plan(message, left, Lang.current, again)
+        if (plan.isEmpty()) return
+        noticeJob = scope.launch {
+            var elapsed = 0
+            for ((at, line) in plan) {
+                delay((at - elapsed) * 1000L)
+                elapsed = at
+                // Only when the server is running: sending a command would otherwise start its service.
+                if (ServerService.isAlive(this@TunnelService)) {
+                    runCatching { ServerService.send(this@TunnelService, ServerService.ACTION_COMMAND) { putExtra(ServerService.EXTRA_LINE, "say $line") } }
+                }
+            }
+        }
     }
 
     /**
@@ -118,26 +165,26 @@ class TunnelService : Service() {
                         if (net.metered && DataLogic.level(use.mobile, limit, use.bonusMb) == DataLogic.Level.WARN && DataMeter.firstWarningToday())
                             Notify.alert(
                                 this@TunnelService, "Mobile data nearly used up",
-                                "VoxelPort has used ${DataLogic.format(use.mobile)} of today's ${DataLogic.limitLabel(limit)} on mobile data. " +
-                                    "Sharing stops at the limit. Connect to Wi‑Fi to keep your server public.",
+                                t("VoxelPort has used {used} of today's {limit} on mobile data.", "used" to DataLogic.format(use.mobile), "limit" to t(DataLogic.limitLabel(limit))) + " " +
+                                    t("Sharing stops at the limit. Connect to Wi‑Fi to keep your server public."),
                             )
                         // With the app closed, the notification is where you can see what hosting costs.
                         if (net.metered && ++ticks % 6 == 0)
-                            Notify.update(this@TunnelService, "Minecraft server is public", "On mobile data · ${DataLogic.format(use.mobile)} used today")
+                            Notify.update(this@TunnelService, "Minecraft server is public", t("On mobile data · {used} used today", "used" to DataLogic.format(use.mobile)))
                     }
                     DataLogic.HostCheck.OVER_LIMIT -> {
                         Notify.alert(
                             this@TunnelService, "Stopped sharing your server",
-                            "Today's mobile-data limit (${DataLogic.limitLabel(limit)}) is used up, so your server is no longer public. " +
-                                "It is still running on your phone. Connect to Wi‑Fi to make it public again.",
+                            t("Today's mobile-data limit ({limit}) is used up, so your server is no longer public.", "limit" to t(DataLogic.limitLabel(limit))) + " " +
+                                t("It is still running on your phone. Connect to Wi‑Fi to make it public again."),
                         )
                         stopSharing(); return@launch
                     }
                     DataLogic.HostCheck.WIFI_ONLY -> {
                         Notify.alert(
                             this@TunnelService, "Stopped sharing your server",
-                            "Your phone is on mobile data and VoxelPort is set to Wi‑Fi only, so your server is no longer public. " +
-                                "It is still running on your phone. Connect to Wi‑Fi to make it public again.",
+                            t("Your phone is on mobile data and VoxelPort is set to Wi‑Fi only, so your server is no longer public.") + " " +
+                                t("It is still running on your phone. Connect to Wi‑Fi to make it public again."),
                         )
                         stopSharing(); return@launch
                     }
@@ -154,6 +201,9 @@ class TunnelService : Service() {
     private fun stopTunnel() {
         dataWatch?.cancel()
         dataWatch = null
+        noticeJob?.cancel()
+        noticeJob = null
+        lastSaid = null
         host?.stop()
         host = null
         wake?.let { if (it.isHeld) it.release() }

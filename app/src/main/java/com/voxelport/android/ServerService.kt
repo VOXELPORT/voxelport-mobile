@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.IBinder
 import android.os.PowerManager
 import android.os.Process
+import kotlinx.coroutines.delay
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -15,14 +16,22 @@ import kotlin.concurrent.thread
  */
 class ServerService : Service() {
     private var wake: PowerManager.WakeLock? = null
+    private var schedule: BackupSchedule? = null
+    private var backupRunner: BackupRunner? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        Lang.init(this)
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> start(intent.getIntExtra(EXTRA_RAM_MB, 2048))
             ACTION_COMMAND -> intent.getStringExtra(EXTRA_LINE)?.let { if (running) Jvm.command(it) }
             ACTION_STOP -> stop()
+            ACTION_BACKUP -> backupNow()
         }
         return START_NOT_STICKY
     }
@@ -39,6 +48,10 @@ class ServerService : Service() {
         val prefs = Prefs(this)
         val profile = prefs.profile
         val saver = prefs.dataSaver
+        runCatching { f.log.delete() } // so "the server is ready" can only come from this run
+        val place = BackupPlace.of(f)
+        val runner = BackupRunner(place, appBuild(this)).also { backupRunner = it }
+        schedule = BackupSchedule(place, runner, { Jvm.command(it) }).also { it.start() }
         thread(name = "minecraft-server") {
             // Fit the server to this phone (view distance, mob limits, threads) and pick JVM flags for it.
             // Data saver also shrinks the world sent to each player, so hosting uses less data.
@@ -65,12 +78,23 @@ class ServerService : Service() {
             Process.killProcess(Process.myPid())
             return
         }
-        Jvm.command("stop")
-        // Paper saves the world and exits by itself; this is the backstop.
-        thread(isDaemon = true) {
+        // One last backup first (only if the world changed since the last), then the server saves and exits by itself.
+        thread(name = "vp-stop") {
+            runCatching { schedule?.backupBeforeStop() }
+            schedule?.stop()
+            Jvm.command("stop")
+            // Paper saves the world and exits by itself; this is the backstop.
             Thread.sleep(45_000)
             Process.killProcess(Process.myPid())
         }
+    }
+
+    /** "Back up now" from the app, while the server is running: the server is told to save, then the world is copied. */
+    private fun backupNow() {
+        val runner = backupRunner
+        // Only once the server is up: before that it cannot be asked to save.
+        if (!running || runner == null || schedule?.ready != true) return
+        thread(name = "vp-backup-now") { runner.run("manual", live = true, command = { Jvm.command(it) }) }
     }
 
     override fun onDestroy() {
@@ -82,6 +106,7 @@ class ServerService : Service() {
         const val ACTION_START = "start"
         const val ACTION_COMMAND = "command"
         const val ACTION_STOP = "stop"
+        const val ACTION_BACKUP = "backup"
         const val EXTRA_RAM_MB = "ram"
         const val EXTRA_LINE = "line"
 
@@ -90,6 +115,22 @@ class ServerService : Service() {
         fun send(ctx: Context, action: String, extras: Intent.() -> Unit = {}) {
             val i = Intent(ctx, ServerService::class.java).setAction(action).apply(extras)
             if (action == ACTION_START) ctx.startForegroundService(i) else ctx.startService(i)
+        }
+
+        /** The app's build number, written into each backup so a restore can tell which app made it. */
+        fun appBuild(ctx: Context): String = Updater.installedCode(ctx).toString()
+
+        /**
+         * Waits for the server process to end after a stop was asked for. The server may make one last backup before it
+         * stops, so the wait starts over while a backup is working (it gives up after a minute of nothing happening).
+         */
+        suspend fun awaitStopped(ctx: Context) {
+            val backups = BackupRunner(BackupPlace.of(Files(ctx)), appBuild(ctx))
+            var n = 0
+            while (isAlive(ctx) && n < 150) {
+                delay(400)
+                if (backups.isBusy()) n = 0 else n++
+            }
         }
 
         /** True while the :jvm process (and so the server) is alive. */

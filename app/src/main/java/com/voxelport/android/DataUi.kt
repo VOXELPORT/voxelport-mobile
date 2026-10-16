@@ -41,21 +41,28 @@ fun DataAskDialog(ask: DataAsk, onClose: () -> Unit) {
 }
 
 /** What to do before a download of about [mb] MB, given the connection and the user's limit setting. */
-fun downloadAsk(limitMb: Int, metered: Boolean, mobileToday: Long, what: String, mb: Int, onGo: () -> Unit): DataAsk? =
-    when (DataLogic.downloadCheck(limitMb, metered)) {
+fun downloadAsk(limitMb: Int, metered: Boolean, mobileToday: Long, what: String, mb: Int, lang: String = Lang.current, onGo: () -> Unit): DataAsk? {
+    val thing = translate(lang, what)
+    return when (DataLogic.downloadCheck(limitMb, metered)) {
         DataLogic.DownloadCheck.OK -> null
         DataLogic.DownloadCheck.ASK -> DataAsk(
-            "Download on mobile data?",
-            "$what is about $mb MB. You're on mobile data, so it counts against your plan (VoxelPort has used ${DataLogic.format(mobileToday)} today).\n\n" +
-                "Wi‑Fi is better for this: it's free and faster.",
-            "Download anyway", onGo,
+            translate(lang, "Download on mobile data?"),
+            translate(
+                lang, "{what} is about {mb} MB. You're on mobile data, so it counts against your plan (VoxelPort has used {used} today).",
+                mapOf("what" to thing, "mb" to mb, "used" to DataLogic.format(mobileToday)),
+            ) + "\n\n" + translate(lang, "Wi‑Fi is better for this: it's free and faster."),
+            translate(lang, "Download anyway"), onGo,
         )
         DataLogic.DownloadCheck.BLOCKED -> DataAsk(
-            "Connect to Wi‑Fi first",
-            "$what is about $mb MB, and VoxelPort is set to Wi‑Fi only. Connect to Wi‑Fi, or change the limit under Data use on the main screen.",
+            translate(lang, "Connect to Wi‑Fi first"),
+            translate(
+                lang, "{what} is about {mb} MB, and VoxelPort is set to Wi‑Fi only. Connect to Wi‑Fi, or change the limit under Data use on the main screen.",
+                mapOf("what" to thing, "mb" to mb),
+            ),
             null,
         )
     }
+}
 
 /** The yellow "you're on mobile data" card at the top of the home screen. */
 @Composable
@@ -65,11 +72,8 @@ fun MobileDataBanner(net: DataMeter.Net) {
     AnimatedVisibility(net.metered && !hidden) {
         Column(Modifier.fillMaxWidth().background(VP.Gold).border(3.dp, VP.Ink).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("YOU'RE ON MOBILE DATA", fontWeight = FontWeight.Black, fontSize = 15.sp, color = VP.Ink)
-            Text(
-                "Hosting and downloads use your data plan. Wi‑Fi is much better for this: it's free and faster. " +
-                    "VoxelPort counts what it uses and stops sharing at your daily limit.",
-                fontSize = 13.sp, color = VP.Ink,
-            )
+            Text("Hosting and downloads use your data plan. Wi‑Fi is much better for this: it's free and faster.", fontSize = 13.sp, color = VP.Ink)
+            Text("VoxelPort counts what it uses and stops sharing at your daily limit.", fontSize = 13.sp, color = VP.Ink)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 VpButton("WI‑FI SETTINGS", VP.Ink, Modifier.weight(1f)) { openWifiSettings(ctx) }
                 VpButton("OK", VP.Card, Modifier.weight(1f)) { hidden = true }
@@ -102,7 +106,7 @@ fun DataPanel(
             color = when { !net.online -> VP.Muted; net.metered -> VP.Red; else -> VP.GrassDark },
             fontWeight = FontWeight.Bold, fontSize = 13.sp,
         )
-        Text("Today: ${DataLogic.format(usage.mobile)} on mobile data · ${DataLogic.format(usage.wifi)} on Wi‑Fi", fontSize = 14.sp, color = VP.Ink)
+        Text(t("Today: {mobile} on mobile data · {wifi} on Wi‑Fi", "mobile" to DataLogic.format(usage.mobile), "wifi" to DataLogic.format(usage.wifi)), fontSize = 14.sp, color = VP.Ink)
         if (fraction != null) {
             LinearProgressIndicator(
                 progress = { fraction }, modifier = Modifier.fillMaxWidth(),
@@ -110,7 +114,8 @@ fun DataPanel(
                 trackColor = VP.outline,
             )
             Text(
-                "${DataLogic.format(usage.mobile)} of ${DataLogic.limitLabel(limitMb)}" + if (usage.bonusMb > 0) " + ${usage.bonusMb} MB added today" else "",
+                t("{used} of {limit}", "used" to DataLogic.format(usage.mobile), "limit" to t(DataLogic.limitLabel(limitMb))) +
+                    if (usage.bonusMb > 0) t(" + {mb} MB added today", "mb" to usage.bonusMb) else "",
                 fontSize = 12.sp, color = if (level == DataLogic.Level.OVER) VP.Red else VP.Muted,
             )
         }
@@ -121,11 +126,11 @@ fun DataPanel(
             when (limitMb) {
                 DataLogic.WIFI_ONLY -> "Hosting and big downloads only work on Wi‑Fi, so nothing uses your plan."
                 DataLogic.UNLIMITED -> "No limit: hosting can use as much mobile data as your players do."
-                else -> "Sharing your server stops for the day at ${DataLogic.limitLabel(limitMb)} of mobile data. Downloads count too."
+                else -> t("Sharing your server stops for the day at {limit} of mobile data. Downloads count too.", "limit" to t(DataLogic.limitLabel(limitMb)))
             },
             fontSize = 12.sp, color = VP.Muted,
         )
-        if (level == DataLogic.Level.OVER) VpButton("ADD ${DataLogic.BONUS_MB} MB FOR TODAY", VP.Gold, Modifier.fillMaxWidth()) { DataMeter.addBonus() }
+        if (level == DataLogic.Level.OVER) VpButton(t("ADD {mb} MB FOR TODAY", "mb" to DataLogic.BONUS_MB), VP.Gold, Modifier.fillMaxWidth()) { DataMeter.addBonus() }
 
         HorizontalDivider(Modifier.padding(vertical = 4.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -148,10 +153,10 @@ fun DataPanel(
         HorizontalDivider(Modifier.padding(vertical = 4.dp))
         Text("Best on Wi‑Fi", fontWeight = FontWeight.Bold, fontSize = 14.sp)
         Text(
-            "On Wi‑Fi hosting doesn't touch your plan. On mobile data every player's game goes through this phone: ${DataLogic.PER_PLAYER_TEXT}. " +
-                "On a 1 GB/day plan, that's a few players for a few hours.",
+            t("On Wi‑Fi hosting doesn't touch your plan. On mobile data every player's game goes through this phone: {amount}.", "amount" to DataLogic.perPlayerText()),
             fontSize = 12.sp, color = VP.Muted,
         )
+        Text("On a 1 GB/day plan, that's a few players for a few hours.", fontSize = 12.sp, color = VP.Muted)
         if (net.metered) VpButton("OPEN WI‑FI SETTINGS", VP.Card, Modifier.fillMaxWidth()) { openWifiSettings(ctx) }
         Text(
             "These numbers are VoxelPort's own estimate. Android's Settings → Network & internet → App data usage shows the exact figure.",

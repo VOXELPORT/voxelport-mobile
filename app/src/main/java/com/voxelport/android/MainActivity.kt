@@ -60,6 +60,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         DataMeter.init(applicationContext)
+        Lang.init(applicationContext)
         setContent { VpTheme { App() } }
     }
 }
@@ -114,6 +115,9 @@ private fun App() {
         if (tunnel.nameError.isNotEmpty() || tunnel.name.isNotEmpty()) claiming = false
         if (tunnel.name.isNotEmpty()) { editingName = false; nameInput = tunnel.name }
     }
+    // "Copied" note under the invite buttons.
+    var inviteCopied by remember { mutableStateOf(false) }
+    LaunchedEffect(inviteCopied) { if (inviteCopied) { delay(3500); inviteCopied = false } }
     // If the relay never answers, don't spin forever.
     LaunchedEffect(claiming) { if (claiming) { delay(15_000); claiming = false } }
 
@@ -160,9 +164,9 @@ private fun App() {
             withContext(Dispatchers.IO) {
                 // Java unpacks to ~200 MB, Paper + the vanilla jar ~120 MB, plus the world: fail early, not half-way.
                 if (!files.jreReady && ctx.filesDir.usableSpace < 1_200_000_000L)
-                    error("Not enough free storage: VoxelPort needs about 1.2 GB free (this phone has ${ctx.filesDir.usableSpace / 1_000_000} MB). Free some space and try again.")
+                    error(t("Not enough free storage: VoxelPort needs about 1.2 GB free (this phone has {have} MB). Free some space and try again.", "have" to ctx.filesDir.usableSpace / 1_000_000))
                 Setup.installJre(ctx, files) { busy = it }
-                val v = prefs.version.ifEmpty { Setup.versionsFor(type, 1).firstOrNull() ?: error("No $type versions found") }
+                val v = prefs.version.ifEmpty { Setup.versionsFor(type, 1).firstOrNull() ?: error(t("No {type} versions found", "type" to type)) }
                 val serverChanged = !files.serverReady || version != v || files.type != type
                 if (serverChanged) {
                     if (type == "fabric") Setup.installFabric(files, v) { busy = it } else Setup.installPaper(files, v) { busy = it }
@@ -234,7 +238,8 @@ private fun App() {
         val wasPublic = tunnel.on || forcePublic
         error = ""; busy = "Restarting…"
         ServerService.send(ctx, ServerService.ACTION_STOP)
-        withContext(Dispatchers.IO) { var n = 0; while (ServerService.isAlive(ctx) && n < 150) { delay(400); n++ } }
+        // The server makes one last backup before it stops: don't give up while that is working.
+        withContext(Dispatchers.IO) { ServerService.awaitStopped(ctx) }
         delay(500)
         startServer()
         if (wasPublic) {
@@ -259,12 +264,14 @@ private fun App() {
             "settings" -> SettingsScreen(files, alive, { screen = "home" }) { restart() }
             "browse" -> BrowseScreen(files, alive, { screen = "home" }) { restart() }
             "support" -> SupportScreen { screen = "home" }
+            "backups" -> BackupsScreen(files, alive, status != null) { screen = "home" }
             "console" -> ConsoleScreen(log, alive, { line -> ServerService.send(ctx, ServerService.ACTION_COMMAND) { putExtra(ServerService.EXTRA_LINE, line) } }) { screen = "home" }
             else -> Column(
                 Modifier.fillMaxSize().systemBarsPadding().imePadding().verticalScroll(homeScroll).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 UpdateBanner(update, alive)
+                tunnel.announcement?.let { NoticeBanner(it, alive) }
                 MobileDataBanner(net)
 
                 // ── Header ──
@@ -290,7 +297,10 @@ private fun App() {
                     }
                     Text(
                         if (installed) "${type.replaceFirstChar { it.uppercase() }} $version · Java 25"
-                        else "Sets up ${type.replaceFirstChar { it.uppercase() }} (Java 25 is already inside the app). It downloads about ${DataLogic.installEstimateMb(type == "fabric", bedrock)} MB: use Wi‑Fi if you can.",
+                        else t(
+                            "Sets up {type} (Java 25 is already inside the app). It downloads about {mb} MB: use Wi‑Fi if you can.",
+                            "type" to type.replaceFirstChar { it.uppercase() }, "mb" to DataLogic.installEstimateMb(type == "fabric", bedrock),
+                        ),
                         color = VP.Muted, fontSize = 14.sp,
                     )
                     if (busy.isNotEmpty()) {
@@ -316,7 +326,7 @@ private fun App() {
                     }
                     Text(
                         when {
-                            st != null -> "Online · ${st.optString("version")} · ${st.optInt("players")}/${st.optInt("max")} players"
+                            st != null -> t("Online · {version} · {players}/{max} players", "version" to st.optString("version"), "players" to st.optInt("players"), "max" to st.optInt("max"))
                             alive -> "Starting… the first start on a phone can take a few minutes."
                             else -> "Stopped"
                         },
@@ -324,7 +334,7 @@ private fun App() {
                     )
 
                     if (alive && hot) Text("Your phone is hot and may slow the server down. Let it cool, or choose Low-end in Settings → Performance.", color = VP.Red, fontSize = 13.sp)
-                    if (alive && !battery.second && battery.first <= 30) Text("Battery ${battery.first}% and not charging. Plug in to keep the server running.", color = VP.Red, fontSize = 13.sp)
+                    if (alive && !battery.second && battery.first <= 30) Text(t("Battery {percent}% and not charging. Plug in to keep the server running.", "percent" to battery.first), color = VP.Red, fontSize = 13.sp)
 
                     if (installed) {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -335,6 +345,8 @@ private fun App() {
                             VpButton("FILES", VP.Card, Modifier.weight(1f)) { screen = "files" }
                             VpButton("CONSOLE", VP.Card, Modifier.weight(1f)) { screen = "console" }
                         }
+                        VpButton("BACKUPS", VP.Card, Modifier.fillMaxWidth()) { screen = "backups" }
+                        LastBackupLine(files)
                     }
 
                     // Setup: EULA, Bedrock, RAM, version. Open until the first install is done.
@@ -353,10 +365,13 @@ private fun App() {
                                 Checkbox(bedrock, { bedrock = it; prefs.bedrock = it }, enabled = !alive && busy.isEmpty())
                                 Text("Let Bedrock players join (phones, consoles)", fontSize = 14.sp, modifier = Modifier.weight(1f))
                             }
-                            Text("RAM for the server: ${"%.2f".format(ram / 1024f).trimEnd('0').trimEnd('.')} GB (phone has ${"%.1f".format(totalMb / 1024f)} GB)", fontSize = 14.sp)
                             Text(
-                                if (ram > recommendedMb * 3 / 2) "More than this phone can spare: Android may close the server. Recommended: ${"%.1f".format(recommendedMb / 1024f)} GB."
-                                else "Recommended for this phone: ${"%.1f".format(recommendedMb / 1024f)} GB.",
+                                t("RAM for the server: {ram} GB (phone has {total} GB)", "ram" to "%.2f".format(ram / 1024f).trimEnd('0').trimEnd('.'), "total" to "%.1f".format(totalMb / 1024f)),
+                                fontSize = 14.sp,
+                            )
+                            Text(
+                                if (ram > recommendedMb * 3 / 2) t("More than this phone can spare: Android may close the server. Recommended: {gb} GB.", "gb" to "%.1f".format(recommendedMb / 1024f))
+                                else t("Recommended for this phone: {gb} GB.", "gb" to "%.1f".format(recommendedMb / 1024f)),
                                 fontSize = 12.sp, color = if (ram > recommendedMb * 3 / 2) VP.Red else VP.Muted,
                             )
                             if (ramSteps >= 1) Slider(
@@ -388,8 +403,8 @@ private fun App() {
                                     FlowRowChips(versions, pickVersion) { v -> pickVersion = v; prefs.version = v }
                                     val changing = (pickVersion.isNotEmpty() && pickVersion != version) || (type != installedType && installed)
                                     if (changing) Text(
-                                        "Tap UPDATE / REPAIR to install ${type.replaceFirstChar { it.uppercase() }} ${pickVersion.ifEmpty { "(latest)" }}." +
-                                            if (type != installedType && installed) " Your world is kept; plugins and mods don't carry over." else "",
+                                        t("Tap UPDATE / REPAIR to install {type} {version}.", "type" to type.replaceFirstChar { it.uppercase() }, "version" to pickVersion.ifEmpty { t("(latest)") }) +
+                                            if (type != installedType && installed) " " + t("Your world is kept; plugins and mods don't carry over.") else "",
                                         color = VP.Ink, fontSize = 13.sp,
                                     )
                                 }
@@ -418,10 +433,10 @@ private fun App() {
                             )
                             DataLogic.HostCheck.OVER_LIMIT -> {
                                 Text(
-                                    "Today's mobile data limit (${DataLogic.limitLabel(limitMb)}) is used up. Connect to Wi‑Fi to share your server, or add more for today.",
+                                    t("Today's mobile data limit ({limit}) is used up. Connect to Wi‑Fi to share your server, or add more for today.", "limit" to t(DataLogic.limitLabel(limitMb))),
                                     color = VP.Red, fontSize = 13.sp,
                                 )
-                                VpButton("ADD ${DataLogic.BONUS_MB} MB FOR TODAY", VP.Gold, Modifier.fillMaxWidth()) { DataMeter.addBonus() }
+                                VpButton(t("ADD {mb} MB FOR TODAY", "mb" to DataLogic.BONUS_MB), VP.Gold, Modifier.fillMaxWidth()) { DataMeter.addBonus() }
                             }
                             DataLogic.HostCheck.OK -> if (net.metered) Text("You're on mobile data: Wi‑Fi is better for hosting.", color = VP.Muted, fontSize = 12.sp)
                         }
@@ -429,22 +444,35 @@ private fun App() {
                         val plain = if (tunnel.port > 0) "play.voxelport.in:${tunnel.port}" else ""
                         val main = tunnel.address.ifEmpty { plain }
                         Text(
-                            if (tunnel.port > 0) "Public" + (if (tunnel.pingMs > 0) " · ${tunnel.pingMs} ms to relay" else "") else tunnel.status.ifEmpty { "Connecting…" },
+                            if (tunnel.port > 0) t("Public") + (if (tunnel.pingMs > 0) t(" · {ms} ms to relay", "ms" to tunnel.pingMs) else "") else tunnel.status.ifEmpty { "Connecting…" },
                             color = if (tunnel.port > 0) VP.GrassDark else VP.Muted, fontWeight = FontWeight.Bold, fontSize = 13.sp,
                         )
                         if (tunnel.port == 0 && tunnel.error.isEmpty()) LinearProgressIndicator(Modifier.fillMaxWidth(), color = VP.Diamond, trackColor = TrackColor)
                         if (main.isNotEmpty()) {
                             Text("JAVA", fontSize = 11.sp, color = VP.Muted)
                             Text(main, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 19.sp)
+                            val bedrockHost = if (tunnel.name.isNotEmpty()) "${tunnel.name}.voxelport.in" else "play.voxelport.in"
+                            // The ready-to-send message: address, how Bedrock players join, and where the free hosting came from.
+                            fun invite(lang: String) = Invite.build(
+                                lang, main, version = version, plainAddress = plain,
+                                bedrockHost = if (bedrock) bedrockHost else null, bedrockPort = if (bedrock) tunnel.port else 0,
+                            )
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 VpButton("COPY", VP.Gold, Modifier.weight(1f)) { copy(ctx, main) }
-                                VpButton("SHARE", VP.Card, Modifier.weight(1f)) { share(ctx, main) }
+                                VpButton("SHARE", VP.Card, Modifier.weight(1f)) { share(ctx, invite(Lang.current)) }
                             }
-                            if (tunnel.address.isNotEmpty() && plain.isNotEmpty()) Text("Also works: $plain", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = VP.Muted)
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                TextButton({ copy(ctx, invite(Lang.current)); inviteCopied = true }) { Text("Copy invite message", fontSize = 13.sp) }
+                                val other = if (Lang.current == Lang.EN) Lang.HINGLISH else Lang.EN
+                                TextButton({ copy(ctx, invite(other)); inviteCopied = true }) {
+                                    Text(if (other == Lang.HINGLISH) "Copy in Hinglish" else "Copy in English", fontSize = 13.sp)
+                                }
+                            }
+                            if (inviteCopied) Text("Copied. Paste it into WhatsApp or Discord.", color = VP.GrassDark, fontSize = 12.sp)
+                            if (tunnel.address.isNotEmpty() && plain.isNotEmpty()) Text(t("Also works: {address}", "address" to plain), fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = VP.Muted)
                             if (bedrock) {
-                                val host = if (tunnel.name.isNotEmpty()) "${tunnel.name}.voxelport.in" else "play.voxelport.in"
                                 Text("BEDROCK", fontSize = 11.sp, color = VP.Muted)
-                                Text("Server $host · Port ${tunnel.port}", fontFamily = FontFamily.Monospace, fontSize = 14.sp)
+                                Text(t("Server {host} · Port {port}", "host" to bedrockHost, "port" to tunnel.port), fontFamily = FontFamily.Monospace, fontSize = 14.sp)
                             }
 
                             HorizontalDivider(Modifier.padding(vertical = 4.dp))
@@ -479,7 +507,8 @@ private fun App() {
                         if (tunnel.notice.isNotEmpty()) Text(tunnel.notice, color = VP.Muted, fontSize = 12.sp)
                         if (tunnel.error.isNotEmpty()) Text(tunnel.error, color = VP.Red, fontSize = 13.sp)
                         Text(
-                            "Data this session: ${DataLogic.format(usage.session)}" + if (net.metered) " · on mobile data, ${DataLogic.format(usage.mobile)} today" else " · on Wi‑Fi",
+                            t("Data this session: {used}", "used" to DataLogic.format(usage.session)) +
+                                if (net.metered) t(" · on mobile data, {mobile} today", "mobile" to DataLogic.format(usage.mobile)) else t(" · on Wi‑Fi"),
                             color = VP.Muted, fontSize = 12.sp,
                         )
                         VpButton("STOP PUBLIC", VP.Card, Modifier.fillMaxWidth()) { TunnelService.send(ctx, TunnelService.ACTION_STOP) }
@@ -504,7 +533,13 @@ private fun App() {
                 }
                 // ── Version + manual update check ──
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("VoxelPort ${Updater.installedName(ctx)} · build ${Updater.installedCode(ctx)}", color = VP.Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    Text(
+                        t("VoxelPort {version} · build {build}", "version" to Updater.installedName(ctx), "build" to Updater.installedCode(ctx)),
+                        color = VP.Muted, fontSize = 12.sp, modifier = Modifier.weight(1f),
+                    )
+                    TextButton({ Lang.set(ctx, if (Lang.current == Lang.EN) Lang.HINGLISH else Lang.EN) }) {
+                        Text(if (Lang.current == Lang.EN) "Hinglish" else "English", fontSize = 12.sp)
+                    }
                     TextButton(
                         { Updater.check(ctx, force = true) },
                         enabled = update !is UpdateState.Checking && update !is UpdateState.Downloading && update !is UpdateState.Installing,
@@ -523,10 +558,12 @@ private fun App() {
             title = { Text("You're on mobile data") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Everything your friends do on your server goes through this phone's connection: ${DataLogic.PER_PLAYER_TEXT}.")
+                    Text(t("Everything your friends do on your server goes through this phone's connection: {amount}.", "amount" to DataLogic.perPlayerText()))
                     Text(
-                        "VoxelPort has used ${DataLogic.format(usage.mobile)} on mobile data today" +
-                            (if (limitMb > 0) " of your ${DataLogic.limitLabel(limitMb)} limit and stops sharing when it's reached." else "."),
+                        if (limitMb > 0) t(
+                            "VoxelPort has used {used} on mobile data today, of your {limit} limit, and stops sharing when it's reached.",
+                            "used" to DataLogic.format(usage.mobile), "limit" to t(DataLogic.limitLabel(limitMb)),
+                        ) else t("VoxelPort has used {used} on mobile data today.", "used" to DataLogic.format(usage.mobile)),
                     )
                     Text("Wi‑Fi is much better for hosting: it's free and doesn't touch your plan.", fontWeight = FontWeight.Bold)
                     if (!saver) Row(verticalAlignment = Alignment.CenterVertically) {
@@ -570,9 +607,10 @@ private fun copy(ctx: android.content.Context, text: String) {
     ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("VoxelPort address", text))
 }
 
-private fun share(ctx: android.content.Context, address: String) {
-    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "Join my Minecraft server: $address")
-    ctx.startActivity(Intent.createChooser(send, "Share server address").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+/** Opens Android's share sheet with [message] (the invite: address, how to join, where it is hosted). */
+private fun share(ctx: android.content.Context, message: String) {
+    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, message)
+    ctx.startActivity(Intent.createChooser(send, t("Share server address")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
 
 /** New complete lines of [path] after byte offset [from]; returns them and the new offset. */

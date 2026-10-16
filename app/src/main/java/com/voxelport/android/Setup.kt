@@ -77,14 +77,14 @@ object Setup {
 
     /** Fabric's server launcher jar for [version] (it fetches the vanilla server on first start). */
     fun installFabric(f: Files, version: String, progress: (String) -> Unit) {
-        progress("Finding Fabric for $version…")
+        progress(t("Finding Fabric for {version}…", "version" to version))
         val loaders = getJsonArray("$FABRIC/loader/$version")
         var loader = ""
         for (i in 0 until loaders.length()) {
             val l = loaders.getJSONObject(i).getJSONObject("loader")
             if (l.optBoolean("stable")) { loader = l.getString("version"); break }
         }
-        if (loader.isEmpty()) error("Fabric doesn't support Minecraft $version yet")
+        if (loader.isEmpty()) error(t("Fabric doesn't support Minecraft {version} yet", "version" to version))
         val installers = getJsonArray("$FABRIC/installer")
         var installer = ""
         for (i in 0 until installers.length()) {
@@ -103,7 +103,7 @@ object Setup {
     fun latestPaperVersion(): String = paperVersions(1).firstOrNull() ?: error("PaperMC returned no versions")
 
     fun installPaper(f: Files, version: String, progress: (String) -> Unit) {
-        progress("Finding Paper $version…")
+        progress(t("Finding Paper {version}…", "version" to version))
         val builds = getJsonArray("$PAPER/versions/$version/builds")
         var best: JSONObject? = null
         for (i in 0 until builds.length()) {
@@ -112,7 +112,7 @@ object Setup {
             val bestStable = best?.optString("channel") == "STABLE"
             if (best == null || (stable && !bestStable) || (stable == bestStable && b.getInt("id") > best.getInt("id"))) best = b
         }
-        val dl = best?.getJSONObject("downloads")?.getJSONObject("server:default") ?: error("No Paper download for $version")
+        val dl = best?.getJSONObject("downloads")?.getJSONObject("server:default") ?: error(t("No Paper download for {version}", "version" to version))
         f.server.mkdirs()
         download(dl.getString("url"), f.jar, dl.getJSONObject("checksums").getString("sha256"), "Paper $version", progress)
         File(f.server, "voxelport-version.txt").writeText(version)
@@ -158,7 +158,7 @@ object Setup {
     internal fun getText(url: String): String {
         val c = open(url)
         try {
-            if (c.responseCode !in 200..299) error("HTTP ${c.responseCode} from ${URL(url).host}")
+            if (c.responseCode !in 200..299) error(t("The download server ({host}) answered HTTP {code}.", "host" to URL(url).host, "code" to c.responseCode))
             return c.inputStream.bufferedReader().readText()
         } finally {
             c.disconnect()
@@ -173,7 +173,7 @@ object Setup {
         val part = File(dest.path + ".part")
         val c = open(url)
         try {
-            if (c.responseCode !in 200..299) error("HTTP ${c.responseCode} downloading $label")
+            if (c.responseCode !in 200..299) error(t("HTTP {code} while downloading {label}", "code" to c.responseCode, "label" to label))
             val total = c.contentLengthLong
             val md = MessageDigest.getInstance(algo)
             c.inputStream.use { input ->
@@ -191,7 +191,7 @@ object Setup {
                         if (pct != lastPct) {
                             lastPct = pct
                             DataMeter.sample() // so a big download is counted as it happens, on the connection it used
-                            progress(if (pct >= 0) "Downloading $label… $pct%" else "Downloading $label… ${done / 1_000_000} MB")
+                            progress(if (pct >= 0) t("Downloading {label}… {pct}%", "label" to label, "pct" to pct) else t("Downloading {label}… {mb} MB", "label" to label, "mb" to done / 1_000_000))
                         }
                     }
                 }
@@ -199,10 +199,10 @@ object Setup {
             val got = md.digest().joinToString("") { "%02x".format(it) }
             if (hash != null && !got.equals(hash, ignoreCase = true)) {
                 part.delete()
-                error("$label download was corrupted (checksum mismatch). Try again.")
+                error(t("The {label} download was corrupted (checksum mismatch). Try again.", "label" to label))
             }
             dest.delete()
-            if (!part.renameTo(dest)) error("Couldn't save $label")
+            if (!part.renameTo(dest)) error(t("Couldn't save {label}", "label" to label))
         } finally {
             c.disconnect()
         }

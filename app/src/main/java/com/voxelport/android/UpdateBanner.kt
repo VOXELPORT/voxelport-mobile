@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -48,7 +47,7 @@ fun UpdateBanner(state: UpdateState, serverRunning: Boolean) {
                     Text("UPDATE AVAILABLE", fontWeight = FontWeight.Black, fontSize = 15.sp, color = VP.Ink)
                     if (m.notes.isNotBlank()) Text(m.notes, fontSize = 14.sp, color = VP.Ink)
                     Text(
-                        "%.0f MB".format(m.size / 1_000_000.0) + if (Updater.metered(ctx)) " · you're on mobile data: Wi‑Fi is better for this" else "",
+                        "%.0f MB".format(m.size / 1_000_000.0) + if (Updater.metered(ctx)) t(" · you're on mobile data: Wi‑Fi is better for this") else "",
                         fontSize = 12.sp, color = VP.Ink,
                     )
                     if (serverRunning) Text("Your server will be saved and stopped while the app updates.", fontSize = 12.sp, color = VP.Ink)
@@ -58,7 +57,7 @@ fun UpdateBanner(state: UpdateState, serverRunning: Boolean) {
                     }
                 }
                 is UpdateState.Downloading -> {
-                    Text("DOWNLOADING UPDATE… ${state.pct}%", fontWeight = FontWeight.Black, fontSize = 15.sp, color = VP.Ink)
+                    Text(t("DOWNLOADING UPDATE… {pct}%", "pct" to state.pct), fontWeight = FontWeight.Black, fontSize = 15.sp, color = VP.Ink)
                     LinearProgressIndicator(progress = { state.pct / 100f }, Modifier.fillMaxWidth(), color = VP.Ink, trackColor = VP.Card)
                 }
                 is UpdateState.Installing -> {

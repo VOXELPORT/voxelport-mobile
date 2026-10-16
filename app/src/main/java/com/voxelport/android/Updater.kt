@@ -78,7 +78,7 @@ object Updater {
                 }
             } catch (e: Exception) {
                 // A failed background check is not worth nagging about; a forced one is.
-                _state.value = if (force) UpdateState.Failed("Couldn't check for updates: ${e.message ?: "no connection"}", null) else UpdateState.Idle
+                _state.value = if (force) UpdateState.Failed(t("Couldn't check for updates: {detail}", "detail" to (e.message ?: t("no connection"))), null) else UpdateState.Idle
             }
         }
     }
@@ -106,8 +106,7 @@ object Updater {
                     _state.value = UpdateState.Installing(m, "Stopping the server and saving the world…")
                     ServerService.send(app, ServerService.ACTION_STOP)
                     TunnelService.send(app, TunnelService.ACTION_STOP)
-                    var n = 0
-                    while (ServerService.isAlive(app) && n < 150) { delay(400); n++ }
+                    ServerService.awaitStopped(app)
                 }
                 val apk = download(app, m)
                 _state.value = UpdateState.Installing(m, "Installing…")
@@ -130,7 +129,7 @@ object Updater {
         val part = File(dir, "voxelport-update.apk.part")
         val c = open(m.url)
         try {
-            if (c.responseCode != 200) error("The update download failed (HTTP ${c.responseCode}).")
+            if (c.responseCode != 200) error(t("The update download failed (HTTP {code}).", "code" to c.responseCode))
             val md = MessageDigest.getInstance("SHA-256")
             var done = 0L
             var last = -1
@@ -196,7 +195,7 @@ object Updater {
                 confirm?.let { app.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             PackageInstaller.STATUS_SUCCESS -> _state.value = UpdateState.Idle // the app is replaced and restarts
             PackageInstaller.STATUS_FAILURE_ABORTED -> _state.value = UpdateState.Failed("The update was cancelled.", (_state.value as? UpdateState.Installing)?.m)
-            else -> _state.value = UpdateState.Failed(message?.takeIf { it.isNotBlank() } ?: "Android couldn't install the update (code $status).", (_state.value as? UpdateState.Installing)?.m)
+            else -> _state.value = UpdateState.Failed(message?.takeIf { it.isNotBlank() } ?: t("Android couldn't install the update (code {code}).", "code" to status), (_state.value as? UpdateState.Installing)?.m)
         }
     }
 
@@ -214,7 +213,7 @@ object Updater {
     private fun httpText(url: String): String {
         val c = open(url)
         try {
-            if (c.responseCode != 200) error("voxelport.in answered HTTP ${c.responseCode}")
+            if (c.responseCode != 200) error(t("voxelport.in answered HTTP {code}", "code" to c.responseCode))
             return c.inputStream.bufferedReader().use { it.readText().take(20_000) }
         } finally { c.disconnect() }
     }

@@ -39,7 +39,7 @@ object SupportLogic {
             Tier("Supporter", 99, listOf("★ Supporter badge on the server list, and your server pinned to the top", "Your custom address never expires from disuse")),
             Tier("Supporter+", 299, listOf("Everything in Supporter", "A short address of 1–2 characters, like vp.voxelport.in")),
         ),
-        how = "Tip by UPI, then email $CONTACT with your UPI reference number and your server's address. It's switched on by hand, usually within a day or two.",
+        how = "Tip by UPI, then email traz@voxelport.in with your UPI reference number and your server's address. It's switched on by hand, usually within a day or two.",
         fine = "Perks are a thank-you for a donation, not a purchase, and last as long as VoxelPort runs.",
     )
     const val DEFAULT_DISCLOSURE =
