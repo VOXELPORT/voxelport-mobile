@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-5FAE3B?style=flat-square)](LICENSE)
 [![Website](https://img.shields.io/badge/Website-voxelport.in-5FAE3B?style=flat-square)](https://voxelport.in)
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/2wJbCPwP4r)
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/JAUfmey2fP)
 
 Host a Minecraft: Java Edition server **from your phone**. VoxelPort for Android runs a real
 [Paper](https://papermc.io) server on the device and puts it online through the
@@ -71,7 +71,7 @@ unofficial fork.
 
 ## Community, support and security
 
-- Questions, ideas, showing off your server: the [Discord](https://discord.gg/2wJbCPwP4r).
+- Questions, ideas, showing off your server: the [Discord](https://discord.gg/JAUfmey2fP).
 - VoxelPort is free and has no ads. If it helped, you can [support it](https://voxelport.in/support).
 - Found a security problem? Please do not open a public issue. Email `traz@voxelport.in`, or use
   **Security > Report a vulnerability** on GitHub.
