@@ -64,6 +64,11 @@ class Prefs(private val ctx: Context) {
         get() = p.getBoolean("data_saver", false)
         set(v) = p.edit().putBoolean("data_saver", v).apply()
 
+    /** The "keep it running with the screen off" card was dismissed (see [BatteryGuideCard]). */
+    var batteryGuideDone: Boolean
+        get() = p.getBoolean("battery_guide_done", false)
+        set(v) = p.edit().putBoolean("battery_guide_done", v).apply()
+
     /** The app's language: "en" or "hinglish"; null until the person picks one (then the phone's language decides). */
     var language: String?
         get() = p.getString("lang", null)

@@ -333,8 +333,18 @@ private fun App() {
                         color = if (st != null) VP.GrassDark else VP.Muted, fontWeight = FontWeight.Bold, fontSize = 13.sp,
                     )
 
+                    if (installed && totalMb < 3800) Text(t("This phone has {ram} GB of RAM. Servers run best with 4 GB or more, so expect lag with more than a couple of players.", "ram" to "%.1f".format(totalMb / 1024f)), color = VP.Muted, fontSize = 13.sp)
                     if (alive && hot) Text("Your phone is hot and may slow the server down. Let it cool, or choose Low-end in Settings → Performance.", color = VP.Red, fontSize = 13.sp)
                     if (alive && !battery.second && battery.first <= 30) Text(t("Battery {percent}% and not charging. Plug in to keep the server running.", "percent" to battery.first), color = VP.Red, fontSize = 13.sp)
+
+                    var guideDone by remember { mutableStateOf(prefs.batteryGuideDone) }
+                    if (alive && !guideDone) {
+                        BatteryGuideCard(
+                            BatteryGuide.detect(Build.MANUFACTURER.orEmpty(), Build.BRAND.orEmpty()),
+                            onOpen = { BatteryGuide.open(ctx, BatteryGuide.detect(Build.MANUFACTURER.orEmpty(), Build.BRAND.orEmpty())) },
+                            onDismiss = { prefs.batteryGuideDone = true; guideDone = true },
+                        )
+                    }
 
                     if (installed) {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

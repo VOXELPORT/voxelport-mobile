@@ -10,6 +10,22 @@ package com.voxelport.android
  */
 object Hinglish {
     val words: Map<String, String> = mapOf(
+        "KEEP IT RUNNING WITH THE SCREEN OFF" to "SCREEN OFF HONE PAR BHI CHALTA RAHE",
+        "Some phones stop apps in the background to save battery, which would take your server offline." to "Kuch phones battery bachane ke liye background apps band kar dete hain, jisse tumhara server offline ho jayega.",
+        "1. Settings → Battery → Background usage limits." to "1. Settings → Battery → Background usage limits kholo.",
+        "2. Turn off \"Put unused apps to sleep\", or add VoxelPort to \"Never sleeping apps\"." to "2. \"Put unused apps to sleep\" band karo, ya VoxelPort ko \"Never sleeping apps\" mein daalo.",
+        "1. Turn on Autostart for VoxelPort." to "1. VoxelPort ke liye Autostart ON karo.",
+        "2. App info → Battery saver → No restrictions." to "2. App info → Battery saver → No restrictions karo.",
+        "1. Turn on Auto launch for VoxelPort." to "1. VoxelPort ke liye Auto launch ON karo.",
+        "2. App info → Battery usage → Allow background activity." to "2. App info → Battery usage → Allow background activity karo.",
+        "2. Settings → Battery → Background power consumption → VoxelPort → Allow." to "2. Settings → Battery → Background power consumption → VoxelPort → Allow karo.",
+        "1. Settings → Battery → App launch → VoxelPort → Manage manually." to "1. Settings → Battery → App launch → VoxelPort → Manage manually karo.",
+        "2. Switch on Auto-launch, Secondary launch and Run in background." to "2. Auto-launch, Secondary launch aur Run in background ON karo.",
+        "1. App info → Battery → Unrestricted (or \"Don't optimise\")." to "1. App info → Battery → Unrestricted karo (ya \"Don't optimise\").",
+        "Also lock VoxelPort in the recent apps list (long-press its card → Lock) so swiping apps away doesn't close it." to "Recent apps list mein VoxelPort ko lock bhi karo (uske card ko long-press → Lock), taaki apps swipe karne par ye band na ho.",
+        "This phone has {ram} GB of RAM. Servers run best with 4 GB or more, so expect lag with more than a couple of players." to "Is phone mein {ram} GB RAM hai. Server 4 GB ya usse zyada par best chalta hai, isliye kuch hi players se zyada hone par lag aa sakta hai.",
+        "OPEN SETTINGS" to "SETTINGS KHOLO",
+        "GOT IT" to "SAMAJH GAYA",
         "Couldn't save: {detail}" to "Save nahi ho paya: {detail}",
         "Allow cracked players" to "Cracked players ko allow karo",
         "ON — people without a Minecraft account can join" to "ON — bina Minecraft account wale log bhi join kar sakte hain",
