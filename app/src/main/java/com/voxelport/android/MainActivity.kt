@@ -441,7 +441,8 @@ private fun App() {
                             DataLogic.HostCheck.OK -> if (net.metered) Text("You're on mobile data: Wi‑Fi is better for hosting.", color = VP.Muted, fontSize = 12.sp)
                         }
                     } else {
-                        val plain = if (tunnel.port > 0) "play.voxelport.in:${tunnel.port}" else ""
+                        val publicHost = tunnel.host.ifEmpty { "play.voxelport.in" }
+                        val plain = if (tunnel.port > 0) "$publicHost:${tunnel.port}" else ""
                         val main = tunnel.address.ifEmpty { plain }
                         Text(
                             if (tunnel.port > 0) t("Public") + (if (tunnel.pingMs > 0) t(" · {ms} ms to relay", "ms" to tunnel.pingMs) else "") else tunnel.status.ifEmpty { "Connecting…" },
@@ -451,7 +452,7 @@ private fun App() {
                         if (main.isNotEmpty()) {
                             Text("JAVA", fontSize = 11.sp, color = VP.Muted)
                             Text(main, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                            val bedrockHost = if (tunnel.name.isNotEmpty()) "${tunnel.name}.voxelport.in" else "play.voxelport.in"
+                            val bedrockHost = if (tunnel.name.isNotEmpty()) "${tunnel.name}.voxelport.in" else publicHost
                             // The ready-to-send message: address, how Bedrock players join, and where the free hosting came from.
                             fun invite(lang: String) = Invite.build(
                                 lang, main, version = version, plainAddress = plain,

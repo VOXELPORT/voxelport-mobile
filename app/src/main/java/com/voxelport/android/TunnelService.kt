@@ -28,6 +28,9 @@ data class TunnelState(
     val name: String = "",
     val address: String = "",
     val pingMs: Int = 0,
+    /** The relay region in use ("in" or "eu") and the host players type with the port; set once it is chosen. */
+    val region: String = "",
+    val host: String = "",
     val error: String = "",
     /** Why the last claim failed (taken, too many tries…); shown next to the name box. */
     val nameError: String = "",
@@ -85,12 +88,13 @@ class TunnelService : Service() {
             .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "VoxelPort:tunnel").apply { acquire() }
         val prefs = Prefs(this)
         _state.value = TunnelState(on = true, status = "Connecting…")
-        host = Mobile.start("android/${Updater.installedCode(this)}", prefs.token, 25565, if (bedrock) 19132 else 0, prefs.claimName, object : Listener {
+        host = Mobile.start("android/${Updater.installedCode(this)}", prefs.token, 25565, if (bedrock) 19132 else 0, prefs.claimName, "auto", object : Listener {
             override fun onEvent(kind: String, text: String, port: Long, name: String, address: String, pingMs: Long) {
                 // The relay's operator announcing something: "port" carries the seconds until it happens.
                 if (kind == "notice") { announce(text, port.toInt()); return }
                 _state.update { s ->
                     when (kind) {
+                        "region" -> s.copy(region = text, host = address)
                         "port" -> s.copy(port = port.toInt(), status = "Public", error = "")
                         "name" -> { prefs.claimName = name; s.copy(name = name, address = address, nameError = "") }
                         "name_error" -> s.copy(nameError = text)
