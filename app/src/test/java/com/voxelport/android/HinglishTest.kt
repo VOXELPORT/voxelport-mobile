@@ -23,7 +23,9 @@ class HinglishTest {
         .map(::File).first { it.isDirectory }
 
     /** Files that carry both languages by hand (and are tested for it), or never reach a screen unmapped. */
-    private val excluded = setOf("Hinglish.kt", "I18n.kt", "TextT.kt", "NoticeLogic.kt", "Invite.kt", "Backups.kt", "BackupRunner.kt")
+    private val excluded = setOf("Hinglish.kt", "I18n.kt", "TextT.kt", "NoticeLogic.kt", "Invite.kt", "Backups.kt", "BackupRunner.kt",
+        // Talks to the accounts service and a browser tab; nothing here is shown in the app.
+        "AppAccount.kt")
 
     // ─── Reading the sources ─────────────────────────────────────────────────────
 

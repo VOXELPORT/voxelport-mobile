@@ -73,6 +73,9 @@ object I18nTestData {
         "{label} · {min}–{max}",
         "Supporter",
         "Supporter+",
+        "Free",
+        "ADDRESS BACKUP",
+        "Passphrase",
         "SUPPORT",
         "♥ TIP JAR",
         "UPI ID",
@@ -83,6 +86,9 @@ object I18nTestData {
     )
 
     val NOT_SHOWN: Set<String> = setOf(
+        "GET",
+        "AES",
+        "AES/GCM/NoPadding",
         "BatteryLife",
         "VoxelPort:server",
         "VoxelPort:tunnel",

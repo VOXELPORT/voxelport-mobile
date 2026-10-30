@@ -59,10 +59,32 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+        // First: it records whether this install already had a device token, before anything creates one.
+        AppAccount.init(applicationContext)
         DataMeter.init(applicationContext)
         Lang.init(applicationContext)
-        setContent { VpTheme { App() } }
+        setContent { VpTheme { Root() } }
     }
+}
+
+/**
+ * Everyone must be in the VoxelPort Discord to host publicly (the same rule as the desktop app). Whoever is not
+ * allowed sees the full-page sign-in once the accounts service has answered; everyone else gets the app.
+ */
+@Composable
+private fun Root() {
+    val ctx = LocalContext.current
+    val acct by AppAccount.state.collectAsStateWithLifecycle()
+    val tunnel by TunnelService.state.collectAsStateWithLifecycle()
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    // Ask the accounts service when the app opens and each time it comes back to the front (at most every 5 minutes).
+    LaunchedEffect(Unit) { lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { AppAccount.refresh(ctx) } }
+    val gated = !acct.gate.allowed && acct.reachable
+    // The server keeps running, but it cannot stay public once the person is no longer allowed to host publicly.
+    LaunchedEffect(gated, tunnel.on) { if (gated && tunnel.on) TunnelService.send(ctx, TunnelService.ACTION_STOP) }
+    if (gated) DiscordGateScreen(
+        acct, { AppAccount.signIn(ctx) }, { AppAccount.cancelSignIn() }, { AppAccount.openInvite(ctx) }, { AppAccount.refresh(ctx, force = true) },
+    ) else App()
 }
 
 @SuppressLint("BatteryLife")
@@ -74,6 +96,7 @@ private fun App() {
     val scope = rememberCoroutineScope()
     val tunnel by TunnelService.state.collectAsStateWithLifecycle()
     val update by Updater.state.collectAsStateWithLifecycle()
+    val acct by AppAccount.state.collectAsStateWithLifecycle()
     // Look for an app update when the app opens (at most every 6 hours; the footer button forces it).
     LaunchedEffect(Unit) { Updater.check(ctx) }
 
@@ -86,6 +109,7 @@ private fun App() {
     var publicAsk by remember { mutableStateOf(false) }
     var saverWithPublic by remember { mutableStateOf(true) }
     var identityOpen by remember { mutableStateOf(false) }
+    var deleteAsk by remember { mutableStateOf(false) }
     val hostCheck = DataLogic.hostCheck(limitMb, usage.bonusMb, usage.mobile, net.metered)
 
     var busy by remember { mutableStateOf("") }
@@ -160,6 +184,7 @@ private fun App() {
 
     fun install() = scope.launch {
         error = ""
+        var bedrockProblem: String? = null
         try {
             withContext(Dispatchers.IO) {
                 // Java unpacks to ~200 MB, Paper + the vanilla jar ~120 MB, plus the world: fail early, not half-way.
@@ -175,11 +200,18 @@ private fun App() {
                 val keepBedrock = bedrock && !serverChanged && DataMeter.net.value.metered && files.bedrockComplete
                 if (!keepBedrock) Setup.removeBedrock(files)
                 if (bedrock && !keepBedrock) {
-                    if (type == "fabric") {
-                        // Bedrock on Fabric: Geyser + Floodgate (and Fabric API) from Modrinth.
-                        for ((id, name) in listOf("P7dR8mSH" to "Fabric API", "wKkoqHrH" to "Geyser", "bWrNNfkb" to "Floodgate"))
-                            if (!Modrinth.isInstalled(files, id)) Modrinth.install(files, id, name, "fabric", v) { busy = it }
-                    } else Setup.installBedrock(files) { busy = it }
+                    // The Bedrock add-ons come from another site than the server itself. If they cannot be fetched, the server
+                    // is still worth having: Java players do not need them, so the install goes on and says what is missing.
+                    try {
+                        if (type == "fabric") {
+                            // Bedrock on Fabric: Geyser + Floodgate (and Fabric API) from Modrinth.
+                            for ((id, name) in listOf("P7dR8mSH" to "Fabric API", "wKkoqHrH" to "Geyser", "bWrNNfkb" to "Floodgate"))
+                                if (!Modrinth.isInstalled(files, id)) Modrinth.install(files, id, name, "fabric", v) { busy = it }
+                        } else Setup.installBedrock(files) { busy = it }
+                    } catch (e: Exception) {
+                        Setup.removeBedrock(files) // never leave half of Geyser and Floodgate behind
+                        bedrockProblem = e.message ?: e.toString()
+                    }
                 }
                 Setup.writeServerFiles(files, Tuning.resolve(prefs.profile, device), prefs.dataSaver)
                 version = v
@@ -188,10 +220,23 @@ private fun App() {
             installedType = files.type
             installed = true
             setupOpen = false
+            bedrockProblem?.let {
+                error = t("The server is ready, but Bedrock support couldn't be added: {detail} Java players can still join. Open Setup and install again to retry.", "detail" to it)
+            }
         } catch (e: Exception) {
             error = e.message ?: e.toString()
         }
         busy = ""
+    }
+
+    // Deletes the server (world, plugins, settings) from this phone. Backups, Java, the address and the sign-in stay.
+    fun deleteServer() = scope.launch {
+        error = ""
+        val gone = withContext(Dispatchers.IO) { ServerDelete.delete(ctx.filesDir) }
+        if (gone) {
+            installed = false; version = ""; installedType = files.type; setupOpen = true
+            status = null; log = emptyList(); pickVersion = prefs.version
+        } else error = t("Couldn't delete the server files. Try again.")
     }
 
     // About how much setting up will download (0 = nothing, so there's nothing to ask about).
@@ -220,6 +265,7 @@ private fun App() {
     }
 
     fun makePublic() {
+        if (!acct.gate.allowed) return // joining the Discord comes first (the tunnel service checks too)
         askBatteryOptimization()
         TunnelService.send(ctx, TunnelService.ACTION_START) { putExtra(TunnelService.EXTRA_BEDROCK, bedrock) }
     }
@@ -273,6 +319,7 @@ private fun App() {
                 UpdateBanner(update, alive)
                 tunnel.announcement?.let { NoticeBanner(it, alive) }
                 MobileDataBanner(net)
+                DiscordBanner(acct, { AppAccount.signIn(ctx) }, { AppAccount.cancelSignIn() }, { AppAccount.openInvite(ctx) }, { AppAccount.refresh(ctx, force = true) })
 
                 // ── Header ──
                 val st = status
@@ -420,6 +467,11 @@ private fun App() {
                                 }
                             }
                             if (installed) VpButton("UPDATE / REPAIR", VP.Gold, Modifier.fillMaxWidth(), enabled = busy.isEmpty() && !alive && eula) { installWithData() }
+                            if (installed) {
+                                val cannotDelete = ServerDelete.blocker(alive, tunnel.on) != null
+                                VpButton("DELETE SERVER", VP.Red, Modifier.fillMaxWidth(), enabled = busy.isEmpty() && !cannotDelete) { deleteAsk = true }
+                                if (cannotDelete) Text("Stop the server first to delete it.", color = VP.Muted, fontSize = 12.sp)
+                            }
                         }
                     }
                 }
@@ -431,7 +483,7 @@ private fun App() {
                     PanelTitle("PUBLIC ADDRESS")
                     if (!tunnel.on) {
                         Text("Friends anywhere can join, even on Jio/Airtel or mobile data. No port forwarding.", color = VP.Muted, fontSize = 14.sp)
-                        VpButton("MAKE PUBLIC", VP.Diamond, Modifier.fillMaxWidth(), enabled = alive && hostCheck == DataLogic.HostCheck.OK) {
+                        VpButton("MAKE PUBLIC", VP.Diamond, Modifier.fillMaxWidth(), enabled = alive && hostCheck == DataLogic.HostCheck.OK && acct.gate.allowed) {
                             // On mobile data every player's game uses your plan: say so first.
                             if (net.metered) { saverWithPublic = !saver; publicAsk = true } else makePublic()
                         }
@@ -532,6 +584,9 @@ private fun App() {
                     saver, { applySaver(it) }, installed, alive, { restart() },
                 )
 
+                DiscordPanel(acct, { AppAccount.signIn(ctx) }, { AppAccount.cancelSignIn() }, { AppAccount.signOut(ctx) })
+                AddressBackupPanel(acct, tunnel.on)
+
                 SupportPanel { screen = "support" }
 
                 // ── Console preview (the full console is its own screen) ──
@@ -562,6 +617,21 @@ private fun App() {
     }
 
     ask?.let { a -> DataAskDialog(a) { ask = null } }
+    if (deleteAsk) {
+        val hasBackup = remember { Backups.list(files.backups).isNotEmpty() }
+        AlertDialog(
+            onDismissRequest = { deleteAsk = false },
+            title = { Text("Delete this server?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("This permanently deletes this server's world, plugins and settings from your phone. Your backups, your address and your Discord sign-in are kept. This can't be undone.", fontSize = 14.sp)
+                    if (!hasBackup) Text("You have no backups of this world yet. Make one first if you want to keep it.", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = VP.Red)
+                }
+            },
+            confirmButton = { TextButton({ deleteAsk = false; deleteServer() }) { Text("Delete", color = VP.Red) } },
+            dismissButton = { TextButton({ deleteAsk = false }) { Text("Cancel") } },
+        )
+    }
     if (identityOpen) IdentityDialog(tunnel.on) { identityOpen = false }
     if (publicAsk) {
         AlertDialog(

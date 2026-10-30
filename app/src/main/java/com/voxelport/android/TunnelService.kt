@@ -81,6 +81,11 @@ class TunnelService : Service() {
             stopSelf()
             return
         }
+        // Everyone must be in the VoxelPort Discord to host publicly: the screen says so, and it is enforced here too.
+        if (!AppAccount.mayHost(this)) {
+            stopSelf()
+            return
+        }
         wake = getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "VoxelPort:tunnel").apply { acquire() }
         @Suppress("DEPRECATION")

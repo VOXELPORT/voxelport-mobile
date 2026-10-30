@@ -160,10 +160,25 @@ object Setup {
         try {
             if (c.responseCode !in 200..299) error(t("The download server ({host}) answered HTTP {code}.", "host" to URL(url).host, "code" to c.responseCode))
             return c.inputStream.bufferedReader().readText()
+        } catch (e: Exception) {
+            throw certified(url, e)
         } finally {
             c.disconnect()
         }
     }
+
+    /**
+     * A refused certificate says only "Trust anchor for certification path not found", which tells a person nothing. Say which
+     * site it was and what usually causes it; every other failure is passed on as it was.
+     */
+    private fun certified(url: String, e: Exception): Exception =
+        if (NetLogic.isCertificateProblem(e)) IllegalStateException(
+            t(
+                "Couldn't make a secure connection to {host}. A VPN, ad-blocker or Private DNS on this phone, a Wi-Fi filter or a wrong date can cause this. Try another network.",
+                "host" to URL(url).host,
+            ),
+            e,
+        ) else e
 
     internal fun getJson(url: String) = JSONObject(getText(url))
     internal fun getJsonArray(url: String) = org.json.JSONArray(getText(url))
@@ -203,6 +218,9 @@ object Setup {
             }
             dest.delete()
             if (!part.renameTo(dest)) error(t("Couldn't save {label}", "label" to label))
+        } catch (e: Exception) {
+            part.delete()
+            throw certified(url, e)
         } finally {
             c.disconnect()
         }
