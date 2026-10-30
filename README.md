@@ -124,7 +124,7 @@ want to keep. Builds from 14 on update in place.
 The phone is an arm64 Linux machine, so the app ships an OpenJDK 25 runtime and starts it inside its own
 `:jvm` process, calling the JVM's launcher through JNI (`app/src/main/cpp/launcher.c`). The tunnel to the
 relay is the same Go code the desktop app and the command-line client use, compiled for Android with
-`gomobile` (the [`cli`](https://github.com/VOXELPORT/cli) repository). The UI is Kotlin and Jetpack Compose.
+`gomobile` (VoxelPort's Go `cli` project, which is not public yet). The UI is Kotlin and Jetpack Compose.
 
 | Where                                    | What                                                              |
 | ---------------------------------------- | ----------------------------------------------------------------- |

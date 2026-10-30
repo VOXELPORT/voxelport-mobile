@@ -19,8 +19,10 @@ You supply them once, then it is a normal Gradle build.
 
 ## 1. The tunnel library (`vpmobile.aar`)
 
-The tunnel lives in the [`cli`](https://github.com/VOXELPORT/cli) repository, package `mobile`. It is the
-same code the desktop app and the command-line client use.
+The tunnel lives in VoxelPort's Go `cli` project, package `mobile`. It is the same code the command-line client
+uses. **That repository is not public yet**, so the commands below only work for someone who has access to it; if you
+do not, you cannot build `vpmobile.aar` yourself for now. Ask in the [Discord](https://discord.gg/JAUfmey2fP) if you
+want to build the app.
 
 ```sh
 go install golang.org/x/mobile/cmd/gomobile@latest
