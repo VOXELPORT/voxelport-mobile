@@ -1,0 +1,64 @@
+name: Publish Android release
+
+# The signed APK is built privately (the tunnel library lives in a private repository and the signing key is a
+# secret), then published on voxelport.in. This workflow puts that same file on a GitHub release, after checking
+# it twice: its SHA-256 must match the update feed, and it must be signed with VoxelPort's release key.
+#
+# Push a tag (v1.0.0, ...) to make a release with the APK attached, or run it by hand (Actions > Publish Android
+# release > Run workflow) with the tag of an existing release to refresh the APK on it.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish or refresh (the tag must already exist)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write   # create or edit GitHub Releases
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      # SHA-256 of VoxelPort's APK signing certificate. A file signed with any other key is refused.
+      EXPECTED_CERT: 4368477a138fb3118838c78be1e795dc74512958fedd962ec93e763d028895a2
+    steps:
+      - name: Fetch the APK that voxelport.in serves
+        run: |
+          set -euo pipefail
+          curl -fsSL https://voxelport.in/dl/android.json -o android.json
+          URL=$(jq -r .url android.json)
+          WANT=$(jq -r .sha256 android.json)
+          echo "Update feed: build $(jq -r .versionCode android.json), $(jq -r .size android.json) bytes"
+          curl -fsSL "https://voxelport.in${URL}" -o VoxelPort.apk
+          echo "$WANT  VoxelPort.apk" | sha256sum -c -
+
+      - name: Check that it is signed with VoxelPort's release key
+        run: |
+          set -euo pipefail
+          APKSIGNER=$(ls "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs VoxelPort.apk | tee signer.txt
+          GOT=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' signer.txt)
+          [ "$GOT" = "$EXPECTED_CERT" ] || { echo "Unexpected signing certificate: $GOT" >&2; exit 1; }
+
+      - name: Generate SHA256SUMS.txt
+        run: |
+          sha256sum VoxelPort.apk > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Attach the APK to the release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          name: VoxelPort for Android
+          files: |
+            VoxelPort.apk
+            SHA256SUMS.txt
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
