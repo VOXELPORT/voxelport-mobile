@@ -54,8 +54,9 @@ jobs:
           fi
           echo "Using $APKSIGNER"
           "$APKSIGNER" verify --print-certs VoxelPort.apk | tee signer.txt
-          GOT=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' signer.txt)
-          [ "$GOT" = "$EXPECTED_CERT" ] || { echo "Unexpected signing certificate: $GOT" >&2; exit 1; }
+          # Older and newer apksigner word this line differently ("Signer #1 ..." and "V2 Signer: ..."), so match the digest itself.
+          GOT=$(grep -oE 'certificate SHA-256 digest: [0-9a-f]{64}' signer.txt | head -1 | awk '{print $NF}')
+          [ "$GOT" = "$EXPECTED_CERT" ] || { echo "::error::Unexpected signing certificate: ${GOT:-none found}"; exit 1; }
 
       - name: Generate SHA256SUMS.txt
         run: |
