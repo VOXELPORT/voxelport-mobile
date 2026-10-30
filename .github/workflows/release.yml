@@ -32,13 +32,11 @@ jobs:
         run: |
           set -Eeuo pipefail
           trap 'echo "::error::step failed at line $LINENO: $BASH_COMMAND"' ERR
-          curl -fsSL -w "android.json: HTTP %{http_code}, %{content_type}, %{size_download} bytes
-" https://voxelport.in/dl/android.json -o android.json
+          curl -fsSL -w "android.json: HTTP %{http_code}, %{content_type}, %{size_download} bytes " https://voxelport.in/dl/android.json -o android.json; echo
           URL=$(jq -r .url android.json)
           WANT=$(jq -r .sha256 android.json)
           echo "Update feed: build $(jq -r .versionCode android.json), $(jq -r .size android.json) bytes"
-          curl -fsSL -w "APK: HTTP %{http_code}, %{content_type}, %{size_download} bytes
-" "https://voxelport.in${URL}" -o VoxelPort.apk
+          curl -fsSL -w "APK: HTTP %{http_code}, %{content_type}, %{size_download} bytes " "https://voxelport.in${URL}" -o VoxelPort.apk; echo
           ls -l VoxelPort.apk
           head -c 120 VoxelPort.apk | od -c | head -3
           echo "$WANT  VoxelPort.apk" | sha256sum -c -
