@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned: the ubuntu-latest label is moving to a newer image
     env:
       # SHA-256 of VoxelPort's APK signing certificate. A file signed with any other key is refused.
       EXPECTED_CERT: 4368477a138fb3118838c78be1e795dc74512958fedd962ec93e763d028895a2
@@ -41,7 +41,14 @@ jobs:
       - name: Check that it is signed with VoxelPort's release key
         run: |
           set -euo pipefail
-          APKSIGNER=$(ls "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/build-tools/*/apksigner | sort -V | tail -1)
+          APKSIGNER=$(ls "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)
+          if [ -z "$APKSIGNER" ]; then
+            echo "No Android SDK on this runner, installing apksigner"
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq apksigner
+            APKSIGNER=$(command -v apksigner)
+          fi
+          echo "Using $APKSIGNER"
           "$APKSIGNER" verify --print-certs VoxelPort.apk | tee signer.txt
           GOT=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' signer.txt)
           [ "$GOT" = "$EXPECTED_CERT" ] || { echo "Unexpected signing certificate: $GOT" >&2; exit 1; }
