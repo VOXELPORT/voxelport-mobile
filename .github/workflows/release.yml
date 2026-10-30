@@ -30,17 +30,23 @@ jobs:
     steps:
       - name: Fetch the APK that voxelport.in serves
         run: |
-          set -euo pipefail
-          curl -fsSL https://voxelport.in/dl/android.json -o android.json
+          set -Eeuo pipefail
+          trap 'echo "::error::step failed at line $LINENO: $BASH_COMMAND"' ERR
+          curl -fsSL -w "android.json: HTTP %{http_code}, %{content_type}, %{size_download} bytes
+" https://voxelport.in/dl/android.json -o android.json
           URL=$(jq -r .url android.json)
           WANT=$(jq -r .sha256 android.json)
           echo "Update feed: build $(jq -r .versionCode android.json), $(jq -r .size android.json) bytes"
-          curl -fsSL "https://voxelport.in${URL}" -o VoxelPort.apk
+          curl -fsSL -w "APK: HTTP %{http_code}, %{content_type}, %{size_download} bytes
+" "https://voxelport.in${URL}" -o VoxelPort.apk
+          ls -l VoxelPort.apk
+          head -c 120 VoxelPort.apk | od -c | head -3
           echo "$WANT  VoxelPort.apk" | sha256sum -c -
 
       - name: Check that it is signed with VoxelPort's release key
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
+          trap 'echo "::error::step failed at line $LINENO: $BASH_COMMAND"' ERR
           APKSIGNER=$(ls "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)
           if [ -z "$APKSIGNER" ]; then
             echo "No Android SDK on this runner, installing apksigner"
