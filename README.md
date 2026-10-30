@@ -7,7 +7,7 @@
 Host a Minecraft: Java Edition server **from your phone**. VoxelPort for Android runs a real
 [Paper](https://papermc.io) server on the device and puts it online through the
 [VoxelPort relay](https://github.com/VOXELPORT/relay), so friends join from anywhere with plain
-Minecraft. There is no port forwarding, no account and no PC.
+Minecraft. There is no port forwarding and no PC to leave on. Friends need no account; you sign in with Discord once.
 
 Get the app: **[voxelport.in/download](https://voxelport.in/download)** · Android guide:
 [voxelport.in/guides/host-minecraft-server-android-phone](https://voxelport.in/guides/host-minecraft-server-android-phone)
@@ -25,8 +25,9 @@ The desktop version for Windows and Linux lives in
   states its risks before it turns anything on.
 - A file manager, a `server.properties` editor and a browser for Modrinth plugins and mods.
 - A mobile-data meter with limits and a Data saver mode, because a server on a phone can use a lot.
-- A private device key, kept on the phone, that your public port and custom address belong to, with a
-  backup and restore screen so you can move to a new phone.
+- Sign in with Discord once, the same rule as the desktop app: you join the VoxelPort Discord server, and VoxelPort never sees your Discord password or email.
+- A private device key, kept on the phone, that your public port and custom address belong to. You can copy it as a code, or back it up to your Discord account locked with a passphrase only you know (VoxelPort cannot read it), then restore it on a new phone or in the desktop app.
+- A Delete server button that removes the server's world, plugins and settings; your backups and address are kept.
 - Updates itself from voxelport.in (the app is sideloaded, so there is no store to do it).
 
 ## How it works
@@ -44,10 +45,22 @@ relay is the same Go code the desktop app and the command-line client use, compi
 | `Tuning.kt`, `YamlEdit.kt`               | The performance profiles and the config edits they make           |
 | `DataLogic.kt`, `DataMeter.kt`           | The mobile-data meter and limits                                  |
 | `UpdateLogic.kt`, `Updater.kt`           | The self-updater                                                  |
+| `AppAccount.kt`, `GateLogic.kt`, `AccountLogic.kt` | Discord sign-in and the rule for who may host publicly  |
+| `IdentityBackup.kt`, `BackupUi.kt`       | The passphrase-locked address backup (same format as the desktop app) |
+| `ServerDelete.kt`                        | Deleting the server safely                                        |
 | `app/src/main/cpp/`                      | The JNI launcher that starts the JVM                              |
 | `tools/publish-android.sh`               | How the official build is published (you do not need it)          |
 
-The pure logic (tuning, YAML edits, the data meter, update checks) has JUnit tests in `app/src/test`.
+The pure logic (tuning, YAML edits, the data meter, update checks, the Discord gate, the address backup
+crypto) has JUnit tests in `app/src/test`. The backup test opens a blob made by the desktop app's code, so
+the two stay compatible.
+
+## Updating from an older build
+
+Builds up to 13 were signed with a key that was lost, so Android cannot update them to build 14 or later.
+They need a one-time reinstall: copy your address code first (**Back up or restore your address**), uninstall,
+install the new build, then restore the code. Uninstalling deletes the server files stored inside the app, so
+copy out anything you want to keep. Builds from 14 on update in place.
 
 ## Building it
 
