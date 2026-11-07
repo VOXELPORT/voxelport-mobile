@@ -13,7 +13,7 @@ object SupportLogic {
     const val SUPPORT_URL = "https://voxelport.in/support.json"
     const val UPI_ID = "trazhub@upi"
     const val SPONSORS_URL = "https://github.com/sponsors/trazhub"
-    const val PERKS_URL = "https://voxelport.in/#supporters"
+    const val PERKS_URL = "https://voxelport.in/support#supporters"
     const val CONTACT = "traz@voxelport.in"
     /** One-tap tip amounts in ₹ (a plain "any amount" button sits beside them). */
     val PRESETS = listOf(20, 50, 100)
@@ -33,14 +33,22 @@ object SupportLogic {
     data class Hosts(val intro: String, val disclosure: String, val items: List<Host>)
     data class Info(val supporter: Supporter, val hosts: Hosts)
 
+    // Kept word for word the same as website/src/support.js, which is what the app shows once it has loaded support.json.
     val DEFAULT_SUPPORTER = Supporter(
-        intro = "VoxelPort stays free for everyone. If you want to chip in, supporters get a few extras as a thank-you.",
+        intro = "VoxelPort hosting stays free for everyone: the app, the free address (like play.voxelport.in:26137) and the public server list. A custom name like yourname.voxelport.in is a supporter perk. If you want to chip in, supporters also get a few extras as a thank-you.",
         tiers = listOf(
-            Tier("Supporter", 99, listOf("★ Supporter badge on the server list, and your server pinned to the top", "Your custom address never expires from disuse")),
-            Tier("Supporter+", 299, listOf("Everything in Supporter", "A short address of 1–2 characters, like vp.voxelport.in")),
+            Tier("Supporter", 99, listOf(
+                "★ Supporter badge on the server list, and your server pinned to the top",
+                "A custom address like yourname.voxelport.in, so Java players skip the port number (new custom names are for supporters, and yours never expires from disuse)",
+            )),
+            Tier("Supporter+", 299, listOf(
+                "Everything in Supporter",
+                "A short address of 1–2 characters, like vp.voxelport.in (first come, first served; you pick it)",
+                "Automatic voice chat on Paper and Fabric servers: once your rank is on, the app installs and sets up Simple Voice Chat for you and friends just join with your server address (they need the matching voice mod)",
+            )),
         ),
-        how = "Tip by UPI, then email traz@voxelport.in with your UPI reference number and your server's address. It's switched on by hand, usually within a day or two.",
-        fine = "Perks are a thank-you for a donation, not a purchase, and last as long as VoxelPort runs.",
+        how = "Tip any amount (₹99 or more for Supporter, ₹299 or more for Supporter+) by UPI, then email traz@voxelport.in with your UPI reference number, your server's address (like mysmp.voxelport.in) and, for Supporter+, your VoxelPort ID (copy it from the app's server settings). It's switched on by hand, usually within a day or two.",
+        fine = "Perks are a thank-you for a donation, not a purchase, and last as long as VoxelPort runs. If one is ever misused it can be taken back.",
     )
     const val DEFAULT_DISCLOSURE =
         "Some of these are affiliate links: VoxelPort may earn a commission if you sign up, at no extra cost to you. VoxelPort itself stays free either way."

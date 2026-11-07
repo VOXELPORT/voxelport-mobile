@@ -55,7 +55,9 @@ enum class AddressBackupResult { SAVED, RESTORED, DELETED, WRONG_PASSPHRASE, NOT
 object AppAccount {
     private const val UA = "VoxelPort-Android (+https://voxelport.in)"
     private const val SIGN_IN_TIMEOUT_MS = 10 * 60 * 1000
-    private const val FALLBACK_INVITE = "https://discord.gg/dSd6GbrYDZ"
+    private const val EXCHANGE_PATIENCE_MS = 4 * 60 * 1000L
+    private const val EXCHANGE_RETRY_MS = 1000L
+    private const val FALLBACK_INVITE = "https://discord.gg/JAUfmey2fP"
     private const val REFRESH_EVERY_MS = 5 * 60 * 1000L
     private const val RETURN_PAGE = "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>VoxelPort</title>" +
         "<body style=\"font-family:system-ui;text-align:center;margin-top:20vh\"><h2>You can return to VoxelPort now.</h2><p>You may close this tab.</p>"
@@ -255,7 +257,16 @@ object AppAccount {
                 else -> return Outcome.FAILED
             }
             val body = JSONObject().put("code", code).put("verifier", verifier).put("deviceToken", Prefs(app).token).toString()
-            val r = call("POST", "/api/app/exchange", body) ?: return Outcome.FAILED
+            // The browser is still in front when the code arrives, and Android 15 cuts a background app's internet access, so the
+            // first try can fail before it leaves the phone. Keep trying (the code lives 5 minutes) until the user is back in VoxelPort.
+            val giveUpAt = System.currentTimeMillis() + EXCHANGE_PATIENCE_MS
+            var answer = call("POST", "/api/app/exchange", body)
+            while (answer == null && System.currentTimeMillis() < giveUpAt) {
+                if (flow?.isCancelled == true) return Outcome.CANCELLED
+                try { Thread.sleep(EXCHANGE_RETRY_MS) } catch (_: InterruptedException) { return Outcome.CANCELLED }
+                answer = call("POST", "/api/app/exchange", body)
+            }
+            val r = answer ?: return Outcome.FAILED
             if (r.code !in 200..299) return Outcome.FAILED
             val s = AccountLogic.parseSummary(r.text) ?: return Outcome.FAILED
             val newSession = s.session ?: return Outcome.FAILED

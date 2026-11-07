@@ -65,7 +65,7 @@ fun SupportScreen(onBack: () -> Unit) {
         Panel {
             PanelTitle("♥ TIP JAR")
             Text(
-                "VoxelPort has no ads, no accounts and no paid plan. The relay runs on a server I pay for myself. Any amount helps, even ₹20.",
+                "VoxelPort has no ads and no paid plan. The relay runs on a server I pay for myself. Any amount helps, even ₹20.",
                 color = VP.Muted, fontSize = 13.sp,
             )
             TipButtons { msg = it }
