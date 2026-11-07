@@ -37,53 +37,53 @@ fun UpdateBanner(state: UpdateState, serverRunning: Boolean) {
     ask?.let { a -> DataAskDialog(a) { ask = null } }
 
     AnimatedVisibility(show || state is UpdateState.UpToDate) {
-        Column(
-            Modifier.fillMaxWidth().background(if (state is UpdateState.Failed) VP.Card else VP.Gold).border(3.dp, VP.Ink).padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        // Update/progress states sit on a gold banner (dark text); Failed and Up-to-date sit on a card (light text).
+        val onCard = state is UpdateState.Failed || state is UpdateState.UpToDate
+        val fg = if (onCard) VP.Ink else VP.OnGold
+        Banner(if (onCard) VP.Card else VP.Gold) {
             when (state) {
                 is UpdateState.Available -> {
                     val m = state.m
-                    Text("UPDATE AVAILABLE", fontWeight = FontWeight.Black, fontSize = 15.sp, color = VP.Ink)
-                    if (m.notes.isNotBlank()) Text(m.notes, fontSize = 14.sp, color = VP.Ink)
+                    Text("UPDATE AVAILABLE", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = fg)
+                    if (m.notes.isNotBlank()) Text(m.notes, fontSize = 14.sp, color = fg)
                     Text(
                         "%.0f MB".format(m.size / 1_000_000.0) + if (Updater.metered(ctx)) t(" · you're on mobile data: Wi‑Fi is better for this") else "",
-                        fontSize = 12.sp, color = VP.Ink,
+                        fontSize = 12.sp, color = fg,
                     )
-                    if (serverRunning) Text("Your server will be saved and stopped while the app updates.", fontSize = 12.sp, color = VP.Ink)
+                    if (serverRunning) Text("Your server will be saved and stopped while the app updates.", fontSize = 12.sp, color = fg)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        VpButton("UPDATE NOW", VP.Ink, Modifier.weight(1f)) { update(m) }
-                        VpButton("LATER", VP.Card, Modifier.weight(1f)) { hidden = true }
+                        VpButton("UPDATE NOW", VP.Grass, Modifier.weight(1f)) { update(m) }
+                        VpGhostButton("LATER", Modifier.weight(1f)) { hidden = true }
                     }
                 }
                 is UpdateState.Downloading -> {
-                    Text(t("DOWNLOADING UPDATE… {pct}%", "pct" to state.pct), fontWeight = FontWeight.Black, fontSize = 15.sp, color = VP.Ink)
-                    LinearProgressIndicator(progress = { state.pct / 100f }, Modifier.fillMaxWidth(), color = VP.Ink, trackColor = VP.Card)
+                    Text(t("DOWNLOADING UPDATE… {pct}%", "pct" to state.pct), fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = fg)
+                    LinearProgressIndicator(progress = { state.pct / 100f }, Modifier.fillMaxWidth(), color = VP.OnGold, trackColor = VP.OnGold.copy(alpha = 0.25f))
                 }
                 is UpdateState.Installing -> {
-                    Text("UPDATING", fontWeight = FontWeight.Black, fontSize = 15.sp, color = VP.Ink)
-                    LinearProgressIndicator(Modifier.fillMaxWidth(), color = VP.Ink, trackColor = VP.Card)
-                    Text(state.note, fontSize = 13.sp, color = VP.Ink)
-                    Text("If Android asks, tap Update. The app restarts when it's done.", fontSize = 12.sp, color = VP.Ink)
+                    Text("UPDATING", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = fg)
+                    LinearProgressIndicator(Modifier.fillMaxWidth(), color = VP.OnGold, trackColor = VP.OnGold.copy(alpha = 0.25f))
+                    Text(state.note, fontSize = 13.sp, color = fg)
+                    Text("If Android asks, tap Update. The app restarts when it's done.", fontSize = 12.sp, color = fg)
                 }
                 is UpdateState.NeedsPermission -> {
-                    Text("ONE QUICK STEP", fontWeight = FontWeight.Black, fontSize = 15.sp, color = VP.Ink)
-                    Text("Android needs you to allow VoxelPort to install updates. Switch on “Allow from this source”, come back, and tap Update again.", fontSize = 14.sp, color = VP.Ink)
+                    Text("ONE QUICK STEP", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = fg)
+                    Text("Android needs you to allow VoxelPort to install updates. Switch on “Allow from this source”, come back, and tap Update again.", fontSize = 14.sp, color = fg)
                     // Already agreed to the download; this is just the second tap after the Android settings screen.
-                    VpButton("UPDATE NOW", VP.Ink, Modifier.fillMaxWidth()) { Updater.install(ctx) }
+                    VpButton("UPDATE NOW", VP.Grass, Modifier.fillMaxWidth()) { Updater.install(ctx) }
                 }
                 is UpdateState.Failed -> {
-                    Text("UPDATE PROBLEM", fontWeight = FontWeight.Black, fontSize = 15.sp, color = VP.Red)
-                    Text(state.message, fontSize = 14.sp, color = VP.Ink)
+                    Text("UPDATE PROBLEM", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = VP.Red)
+                    Text(state.message, fontSize = 14.sp, color = fg)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (state.m != null) VpButton("TRY AGAIN", VP.Gold, Modifier.weight(1f)) { update(state.m) }
-                        VpButton("CLOSE", VP.Card, Modifier.weight(1f)) { Updater.dismiss() }
+                        if (state.m != null) VpButton("TRY AGAIN", VP.Grass, Modifier.weight(1f)) { update(state.m) }
+                        VpGhostButton("CLOSE", Modifier.weight(1f)) { Updater.dismiss() }
                     }
                 }
                 is UpdateState.UpToDate -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("You're up to date.", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = VP.Ink, modifier = Modifier.weight(1f))
-                        TextButton({ Updater.dismiss() }) { Text("OK", color = VP.Ink) }
+                        Text("You're up to date.", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = fg, modifier = Modifier.weight(1f))
+                        TextButton({ Updater.dismiss() }) { Text("OK", color = VP.Grass) }
                     }
                 }
                 else -> {}

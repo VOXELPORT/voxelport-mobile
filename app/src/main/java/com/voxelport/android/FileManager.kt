@@ -14,6 +14,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -25,13 +27,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-private val Paper = Color(0xFFF3EBDC)
-private val Card = Color(0xFFFFFBF2)
-private val Ink = Color(0xFF15120F)
-private val Muted = Color(0xFF6B6052)
-private val Red = Color(0xFFC8262B)
-private val Grass = Color(0xFF5FAE3B)
-private val Gold = Color(0xFFF6CB2F)
+private val Paper = VP.Paper
+private val Card = VP.Card
+private val Ink = VP.Ink
+private val Muted = VP.Muted
+private val Red = VP.Red
+private val Grass = VP.Grass
+private val Gold = VP.Gold
 
 private fun human(n: Long): String {
     if (n < 1024) return "$n B"
@@ -114,7 +116,7 @@ fun FilesScreen(root: File, serverAlive: Boolean, onBack: () -> Unit) {
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(entries, key = { it.path }) { f ->
                     Row(
-                        Modifier.fillMaxWidth().background(Card).border(2.dp, Ink).clickable { if (f.isDirectory) { dir = f } }.padding(14.dp),
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).border(1.dp, VP.Line, RoundedCornerShape(10.dp)).clickable { if (f.isDirectory) { dir = f } }.padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(if (f.isDirectory) "📁" else "📄", fontSize = 20.sp, modifier = Modifier.padding(end = 10.dp))
@@ -157,8 +159,8 @@ private fun fileName(ctx: android.content.Context, uri: Uri): String? {
 @Composable
 private fun Btn(label: String, color: Color, onClick: () -> Unit) {
     Button(
-        onClick, shape = androidx.compose.ui.graphics.RectangleShape,
+        onClick, shape = RoundedCornerShape(10.dp),
         colors = ButtonDefaults.buttonColors(containerColor = color, contentColor = if (color == Gold || color == Card) Ink else Color.White),
-        modifier = Modifier.border(2.dp, Ink),
+        modifier = Modifier.clip(RoundedCornerShape(10.dp)).border(1.dp, VP.Line, RoundedCornerShape(10.dp)),
     ) { Text(label, fontWeight = FontWeight.Black) }
 }

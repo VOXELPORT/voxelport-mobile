@@ -70,13 +70,13 @@ fun MobileDataBanner(net: DataMeter.Net) {
     val ctx = LocalContext.current
     var hidden by remember { mutableStateOf(false) }
     AnimatedVisibility(net.metered && !hidden) {
-        Column(Modifier.fillMaxWidth().background(VP.Gold).border(3.dp, VP.Ink).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("YOU'RE ON MOBILE DATA", fontWeight = FontWeight.Black, fontSize = 15.sp, color = VP.Ink)
-            Text("Hosting and downloads use your data plan. Wi‑Fi is much better for this: it's free and faster.", fontSize = 13.sp, color = VP.Ink)
-            Text("VoxelPort counts what it uses and stops sharing at your daily limit.", fontSize = 13.sp, color = VP.Ink)
+        Banner {
+            Text("YOU'RE ON MOBILE DATA", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = VP.OnGold)
+            Text("Hosting and downloads use your data plan. Wi‑Fi is much better for this: it's free and faster.", fontSize = 13.sp, color = VP.OnGold)
+            Text("VoxelPort counts what it uses and stops sharing at your daily limit.", fontSize = 13.sp, color = VP.OnGold)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                VpButton("WI‑FI SETTINGS", VP.Ink, Modifier.weight(1f)) { openWifiSettings(ctx) }
-                VpButton("OK", VP.Card, Modifier.weight(1f)) { hidden = true }
+                VpButton("WI‑FI SETTINGS", VP.Grass, Modifier.weight(1f)) { openWifiSettings(ctx) }
+                VpGhostButton("OK", Modifier.weight(1f)) { hidden = true }
             }
         }
     }

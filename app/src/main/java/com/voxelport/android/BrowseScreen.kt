@@ -13,6 +13,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -30,13 +32,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.URL
 
-private val Paper = Color(0xFFF3EBDC)
-private val Card = Color(0xFFFFFBF2)
-private val Ink = Color(0xFF15120F)
-private val Muted = Color(0xFF6B6052)
-private val Red = Color(0xFFC8262B)
-private val Grass = Color(0xFF5FAE3B)
-private val Gold = Color(0xFFF6CB2F)
+private val Paper = VP.Paper
+private val Card = VP.Card
+private val Ink = VP.Ink
+private val Muted = VP.Muted
+private val Red = VP.Red
+private val Grass = VP.Grass
+private val Gold = VP.Gold
 
 private object Icons {
     private val cache = LruCache<String, ImageBitmap>(60)
@@ -54,7 +56,7 @@ private object Icons {
 @Composable
 private fun Icon(url: String?) {
     val img by produceState<ImageBitmap?>(null, url) { value = url?.let { Icons.get(it) } }
-    Box(Modifier.size(56.dp).background(Color(0xFFE6DCC6)).border(2.dp, Ink)) {
+    Box(Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)).background(VP.Paper2).border(1.dp, VP.Line, RoundedCornerShape(10.dp))) {
         img?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
     }
 }
@@ -126,11 +128,11 @@ fun BrowseScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: ()
 
         if (changed) {
             Row(
-                Modifier.fillMaxWidth().background(Gold).border(2.dp, Ink).padding(10.dp),
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Gold).padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(if (alive) "Restart the server to load your changes." else "Start the server to load your changes.", fontSize = 13.sp, color = Ink, modifier = Modifier.weight(1f))
-                if (alive) TextButton({ onRestart(); changed = false; note = "Restarting…" }) { Text("RESTART", color = Ink, fontWeight = FontWeight.Black) }
+                Text(if (alive) "Restart the server to load your changes." else "Start the server to load your changes.", fontSize = 13.sp, color = VP.OnGold, modifier = Modifier.weight(1f))
+                if (alive) TextButton({ onRestart(); changed = false; note = "Restarting…" }) { Text("RESTART", color = VP.OnGold, fontWeight = FontWeight.SemiBold) }
             }
         }
         if (note.isNotEmpty()) Text(note, color = Ink, fontSize = 13.sp)
@@ -153,7 +155,7 @@ fun BrowseScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: ()
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(hits, key = { it.id }) { h ->
                     val done = installed.any { it.id == h.id }
-                    Row(Modifier.fillMaxWidth().background(Card).border(2.dp, Ink).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).border(1.dp, VP.Line, RoundedCornerShape(10.dp)).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(if (net.metered) null else h.icon) // pictures are most of what a search downloads
                         Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
                             Text(h.title, fontWeight = FontWeight.Black, color = Ink, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -186,9 +188,9 @@ fun BrowseScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: ()
                                     working = null
                                 }
                             },
-                            enabled = working == null && !done, shape = androidx.compose.ui.graphics.RectangleShape,
-                            colors = ButtonDefaults.buttonColors(containerColor = if (done) Color(0xFFBFB6A3) else Grass, contentColor = Color.White),
-                            modifier = Modifier.border(2.dp, Ink),
+                            enabled = working == null && !done, shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = if (done) VP.Paper2 else Grass, contentColor = Color.White),
+                            modifier = Modifier.clip(RoundedCornerShape(10.dp)).border(1.dp, VP.Line, RoundedCornerShape(10.dp)),
                         ) { Text(if (done) "INSTALLED" else if (working == h.id) "…" else "INSTALL", fontWeight = FontWeight.Black, fontSize = 12.sp) }
                     }
                 }
@@ -200,7 +202,7 @@ fun BrowseScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: ()
             if (installed.isEmpty()) Text("Nothing installed from here yet. Anything you add in Files shows up there.", color = Muted, fontSize = 13.sp)
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(installed, key = { it.id }) { a ->
-                    Row(Modifier.fillMaxWidth().background(Card).border(2.dp, Ink).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).border(1.dp, VP.Line, RoundedCornerShape(10.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(a.title, fontWeight = FontWeight.Black, color = Ink)
                             Text("${a.dir}/${a.file}", color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

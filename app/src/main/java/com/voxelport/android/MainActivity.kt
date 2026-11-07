@@ -543,27 +543,27 @@ private fun App() {
                                 // Already claimed: show it, like the desktop app, instead of the claim box.
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
-                                        Text("Your free address", fontSize = 11.sp, color = VP.Muted)
+                                        Text("Your custom address", fontSize = 11.sp, color = VP.Muted)
                                         Text("${tunnel.name}.voxelport.in", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                                     }
                                     TextButton({ nameInput = tunnel.name; editingName = true; TunnelService.clearNameError() }) { Text("Change") }
                                     TextButton({ TunnelService.send(ctx, TunnelService.ACTION_RELEASE); nameInput = "" }) { Text("Remove", color = VP.Red) }
                                 }
                             } else {
-                                Text(if (tunnel.name.isEmpty()) "Get a free custom address" else "Change your address", fontSize = 12.sp, color = VP.Muted)
+                                Text(if (tunnel.name.isEmpty()) "Get a custom address" else "Change your address", fontSize = 12.sp, color = VP.Muted)
                                 Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     OutlinedTextField(
                                         nameInput, { nameInput = it.lowercase().filter { c -> c in 'a'..'z' || c in '0'..'9' || c == '-' }.take(20) },
                                         singleLine = true, modifier = Modifier.weight(1f), suffix = { Text(".voxelport.in", fontSize = 13.sp) },
                                         isError = tunnel.nameError.isNotEmpty(),
                                     )
-                                    VpButton(if (claiming) "…" else "CLAIM", VP.Ink, Modifier.padding(top = 4.dp), enabled = nameInput.length >= 3 && !claiming) {
+                                    VpButton(if (claiming) "…" else "CLAIM", VP.Grass, Modifier.padding(top = 4.dp), enabled = nameInput.length >= 3 && !claiming) {
                                         if (nameInput == tunnel.name) editingName = false
                                         else { claiming = true; TunnelService.clearNameError(); TunnelService.send(ctx, TunnelService.ACTION_CLAIM) { putExtra(TunnelService.EXTRA_NAME, nameInput) } }
                                     }
                                 }
                                 if (tunnel.nameError.isNotEmpty()) Text(tunnel.nameError, color = VP.Red, fontSize = 13.sp)
-                                else Text("3–20 letters, numbers or dashes. Friends join without a port number.", color = VP.Muted, fontSize = 12.sp)
+                                else Text("A custom name (friends join without a port number) is a supporter perk. 3–20 letters, numbers or dashes.", color = VP.Muted, fontSize = 12.sp)
                                 if (editingName && tunnel.name.isNotEmpty()) TextButton({ editingName = false; nameInput = tunnel.name; TunnelService.clearNameError() }) { Text("Cancel") }
                             }
                         }
@@ -664,7 +664,7 @@ private fun App() {
     }
 }
 
-private val TrackColor = Color(0xFFE6DCC6)
+private val TrackColor = VP.Paper2
 
 /** Wrapping grid of selectable version chips (rows of 3). */
 @Composable

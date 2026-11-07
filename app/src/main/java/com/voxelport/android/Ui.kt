@@ -4,44 +4,72 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** VoxelPort's palette (same as the website and desktop app). */
+/**
+ * VoxelPort's palette. The app is dark only, matching the desktop app's dark theme
+ * (charcoal background, soft cards, hairline borders, one green accent). The names are kept
+ * from the old light theme so the rest of the code does not change: only the values moved.
+ */
 object VP {
-    val Paper = Color(0xFFF3EBDC)
-    val Card = Color(0xFFFFFBF2)
-    val Ink = Color(0xFF15120F)
-    val Muted = Color(0xFF6B6052)
-    val Red = Color(0xFFC8262B)
-    val Grass = Color(0xFF5FAE3B)
-    val GrassDark = Color(0xFF3F7F25)
-    val Gold = Color(0xFFF6CB2F)
-    val Diamond = Color(0xFF43C8D8)
-    val Console = Color(0xFF1D1B1A)
+    val Paper = Color(0xFF181A1B) // app background
+    val Paper2 = Color(0xFF252829) // raised surface (inputs, pills)
+    val Card = Color(0xFF202324) // panels
+    val Ink = Color(0xFFF4F4F5) // primary text (was the black outline/ink; now the near-white text)
+    val Line = Color(0x22FFFFFF) // hairline border (what used to be the thick black outline)
+    val Muted = Color(0xFFA1AAA7)
+    val Red = Color(0xFFEF4444)
+    val Grass = Color(0xFF22C55E)
+    val GrassDark = Color(0xFF4ADE80)
+    val Gold = Color(0xFFFACC15)
+    val Diamond = Color(0xFF38BDF8)
+    val Console = Color(0xFF15181A)
+    val OnGold = Color(0xFF1A1600) // dark text for use on the Gold / coloured banners
+
+    val Radius = 16.dp
+    val RadiusSm = 10.dp
 }
 
-private val scheme = lightColorScheme(
-    primary = VP.GrassDark, onPrimary = Color.White,
-    secondary = VP.Gold, onSecondary = VP.Ink,
-    tertiary = VP.Diamond, onTertiary = VP.Ink,
+/** A coloured call-out banner (announcements, warnings), rounded with dark text on the colour. */
+@Composable
+fun Banner(
+    color: Color = VP.Gold,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(VP.RadiusSm))
+            .background(color)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        content = content,
+    )
+}
+
+private val scheme = darkColorScheme(
+    primary = VP.Grass, onPrimary = Color(0xFF07140B),
+    secondary = VP.Gold, onSecondary = Color(0xFF1A1600),
+    tertiary = VP.Diamond, onTertiary = Color(0xFF04171F),
     background = VP.Paper, onBackground = VP.Ink,
     surface = VP.Card, onSurface = VP.Ink,
-    surfaceVariant = Color(0xFFE6DCC6), onSurfaceVariant = VP.Muted,
-    secondaryContainer = Color(0xFFE6DCC6), onSecondaryContainer = VP.Ink,
-    outline = VP.Ink, outlineVariant = Color(0xFFB9AE99),
+    surfaceVariant = VP.Paper2, onSurfaceVariant = VP.Muted,
+    secondaryContainer = VP.Paper2, onSecondaryContainer = VP.Ink,
+    outline = VP.Line, outlineVariant = VP.Line,
     error = VP.Red,
 )
 
-/** Brand colours instead of Material's default purple (sliders, checkboxes, text fields, links). */
+/** Dark brand theme (sliders, checkboxes, text fields, links all use the green accent). */
 @Composable
 fun VpTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = scheme) {
@@ -49,11 +77,16 @@ fun VpTheme(content: @Composable () -> Unit) {
     }
 }
 
-/** A bordered card; animates its height when sections open and close. */
+/** A soft rounded card with a hairline border; animates its height when sections open and close. */
 @Composable
 fun Panel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(
-        modifier.fillMaxWidth().background(VP.Card).border(3.dp, VP.Ink).padding(14.dp).animateContentSize(),
+        modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(VP.Radius))
+            .background(VP.Card)
+            .border(1.dp, VP.Line, RoundedCornerShape(VP.Radius))
+            .padding(16.dp)
+            .animateContentSize(),
         verticalArrangement = Arrangement.spacedBy(10.dp), content = content,
     )
 }
@@ -61,7 +94,7 @@ fun Panel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> 
 @Composable
 fun PanelTitle(text: String, trailing: @Composable RowScope.() -> Unit = {}) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(text, fontWeight = FontWeight.Black, color = VP.Ink, fontSize = 15.sp, letterSpacing = 1.sp, modifier = Modifier.weight(1f))
+        Text(text, fontWeight = FontWeight.SemiBold, color = VP.Ink, fontSize = 15.sp, letterSpacing = 0.2.sp, modifier = Modifier.weight(1f))
         trailing()
     }
 }
@@ -69,28 +102,47 @@ fun PanelTitle(text: String, trailing: @Composable RowScope.() -> Unit = {}) {
 /** Button that always stays on one line, so a row of them can share the width with Modifier.weight(1f). */
 @Composable
 fun VpButton(label: String, color: Color, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
-    val dark = color == VP.Gold || color == VP.Card || color == VP.Diamond
+    // Call sites pass VP.Card for a secondary button and VP.Ink for the primary one (both were the old
+    // light theme's conventions). On dark that means: VP.Card -> ghost, VP.Ink -> the green primary.
+    if (color == VP.Card) {
+        VpGhostButton(label, modifier, enabled, onClick)
+        return
+    }
+    val fill = if (color == VP.Ink) VP.Grass else color
+    val light = fill == VP.Gold || fill == VP.Diamond || fill == VP.GrassDark || fill == VP.Grass
     Button(
-        onClick, enabled = enabled, shape = RectangleShape,
-        modifier = modifier.heightIn(min = 48.dp).border(2.dp, if (enabled) VP.Ink else VP.outlineMuted),
+        onClick, enabled = enabled, shape = RoundedCornerShape(VP.RadiusSm),
+        modifier = modifier.heightIn(min = 48.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = color, contentColor = if (dark) VP.Ink else Color.White,
-            disabledContainerColor = Color(0xFFE4DCCB), disabledContentColor = Color(0xFF9A8F7C),
+            containerColor = fill, contentColor = if (light) Color(0xFF07140B) else Color.White,
+            disabledContainerColor = VP.Paper2, disabledContentColor = VP.Muted,
         ),
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-    ) { Text(label, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) }
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+    ) { Text(label, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) }
 }
 
-private val VP.outlineMuted get() = Color(0xFFB9AE99)
+/** A secondary button: subtle raised surface with a hairline border, for "SHARE", "STOP PUBLIC". */
+@Composable
+fun VpGhostButton(label: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+    Button(
+        onClick, enabled = enabled, shape = RoundedCornerShape(VP.RadiusSm),
+        modifier = modifier.heightIn(min = 48.dp).border(1.dp, VP.Line, RoundedCornerShape(VP.RadiusSm)),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = VP.Paper2, contentColor = VP.Ink,
+            disabledContainerColor = VP.Paper2, disabledContentColor = VP.Muted,
+        ),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+    ) { Text(label, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) }
+}
 
 /** A coloured dot + label: Online / Starting / Stopped. */
 @Composable
 fun StatusPill(label: String, color: Color) {
     Row(
-        Modifier.background(VP.Card).border(2.dp, VP.Ink).padding(horizontal = 10.dp, vertical = 6.dp),
+        Modifier.clip(RoundedCornerShape(999.dp)).background(VP.Paper2).border(1.dp, VP.Line, RoundedCornerShape(999.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(Modifier.size(10.dp).background(color))
-        Text(label, fontWeight = FontWeight.Black, fontSize = 12.sp, color = VP.Ink, maxLines = 1)
+        Box(Modifier.size(8.dp).clip(RoundedCornerShape(999.dp)).background(color))
+        Text(label, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = VP.Ink, maxLines = 1)
     }
 }

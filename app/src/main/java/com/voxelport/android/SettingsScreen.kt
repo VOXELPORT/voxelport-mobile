@@ -10,6 +10,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -17,12 +19,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.io.File
 
-private val Paper = Color(0xFFF3EBDC)
-private val Card = Color(0xFFFFFBF2)
-private val Ink = Color(0xFF15120F)
-private val Muted = Color(0xFF6B6052)
-private val Grass = Color(0xFF5FAE3B)
-private val Gold = Color(0xFFF6CB2F)
+private val Paper = VP.Paper
+private val Card = VP.Card
+private val Ink = VP.Ink
+private val Muted = VP.Muted
+private val Grass = VP.Grass
+private val Gold = VP.Gold
 
 private class IntField(val key: String, val label: String, val def: Int, val min: Int, val max: Int)
 
@@ -106,7 +108,7 @@ fun SettingsScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: 
             Text("View and simulation distance (below) change at once; the engine tuning applies from the next start.", color = Muted, fontSize = 12.sp)
         }
 
-        Column(Modifier.fillMaxWidth().background(Card).border(3.dp, Ink).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Card).border(1.dp, VP.Line, RoundedCornerShape(16.dp)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("GAMEPLAY", fontWeight = FontWeight.Black, color = Ink)
             OutlinedTextField(v["motd"] ?: "", { v["motd"] = it.take(120).replace("\n", " ") }, label = { Text("Description (MOTD)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Dropdown("Game mode", v["gamemode"] ?: "survival", listOf("survival", "creative", "adventure", "spectator")) { v["gamemode"] = it }
@@ -130,12 +132,12 @@ fun SettingsScreen(files: Files, alive: Boolean, onBack: () -> Unit, onRestart: 
         if (msg.isNotEmpty()) Text(msg, color = Ink, fontSize = 13.sp)
         Button(
             { if (save()) msg = if (alive) "Saved. Restart the server to apply." else "Saved." },
-            shape = androidx.compose.ui.graphics.RectangleShape, modifier = Modifier.fillMaxWidth().border(2.dp, Ink),
+            shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).border(1.dp, VP.Line, RoundedCornerShape(10.dp)),
             colors = ButtonDefaults.buttonColors(containerColor = Grass, contentColor = Color.White),
         ) { Text("SAVE SETTINGS", fontWeight = FontWeight.Black) }
         if (alive) Button(
             { if (save()) { msg = "Saved — restarting…"; onRestart(); onBack() } },
-            shape = androidx.compose.ui.graphics.RectangleShape, modifier = Modifier.fillMaxWidth().border(2.dp, Ink),
+            shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).border(1.dp, VP.Line, RoundedCornerShape(10.dp)),
             colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Ink),
         ) { Text("SAVE & RESTART", fontWeight = FontWeight.Black) }
         Spacer(Modifier.height(24.dp))
@@ -148,7 +150,7 @@ private fun Dropdown(label: String, value: String, options: List<String>, onPick
     Column {
         Text(label, fontSize = 12.sp, color = Muted)
         Box {
-            OutlinedButton({ open = true }, shape = androidx.compose.ui.graphics.RectangleShape, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton({ open = true }, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
                 Text(value.replaceFirstChar { it.uppercase() }, color = Ink, modifier = Modifier.weight(1f))
                 Text("▾", color = Ink)
             }
