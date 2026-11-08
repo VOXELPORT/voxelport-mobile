@@ -67,10 +67,17 @@ object Updater {
         val app = ctx.applicationContext
         scope.launch {
             try {
-                // A changing query so neither Cloudflare nor the phone serves a stale manifest.
-                val text = httpText("${UpdateLogic.MANIFEST_URL}?t=${now / 60_000}")
+                // Both feeds are read, and the newer one counts, so a release published on only one of them is never missed.
+                // A changing query so neither a CDN nor the phone serves a stale manifest.
+                var failure: Exception? = null
+                var answered = false
+                val found = UpdateLogic.MANIFEST_URLS.mapNotNull { feed ->
+                    val text = try { httpText("$feed?t=${now / 60_000}").also { answered = true } } catch (e: Exception) { if (failure == null) failure = e; null }
+                    text?.let { UpdateLogic.parse(it, feed) }
+                }
+                if (!answered) throw failure ?: IllegalStateException("no connection") // neither feed could be reached: say why
                 prefs.lastUpdateCheck = now
-                val m = UpdateLogic.parse(text) ?: error("The update information on voxelport.in looked wrong.")
+                val m = UpdateLogic.newest(found) ?: error("The update information on our website looked wrong.")
                 _state.value = when {
                     UpdateLogic.isNewer(m, installedCode(app)) -> UpdateState.Available(m)
                     force -> UpdateState.UpToDate // only say so when the user asked
@@ -201,7 +208,7 @@ object Updater {
 
     // ── tiny HTTP helpers (https to our own site only, no redirects) ──
     private fun open(url: String): HttpURLConnection {
-        require(url.startsWith("https://${UpdateLogic.HOST}/")) { "Refusing to download from outside voxelport.in." }
+        require(UpdateLogic.trustedUrl(url)) { "Refusing to download from outside VoxelPort's own website." }
         return (URL(url).openConnection() as HttpURLConnection).apply {
             setRequestProperty("User-Agent", UA)
             setRequestProperty("Cache-Control", "no-cache")
@@ -213,7 +220,7 @@ object Updater {
     private fun httpText(url: String): String {
         val c = open(url)
         try {
-            if (c.responseCode != 200) error(t("voxelport.in answered HTTP {code}", "code" to c.responseCode))
+            if (c.responseCode != 200) error(t("The website answered HTTP {code}", "code" to c.responseCode))
             return c.inputStream.bufferedReader().use { it.readText().take(20_000) }
         } finally { c.disconnect() }
     }

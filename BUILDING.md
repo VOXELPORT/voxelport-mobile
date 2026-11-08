@@ -87,6 +87,13 @@ key up somewhere safe: losing it means your installed users can never update.
 
 - The visible version is `versionName` in `app/build.gradle.kts`; raise `versionCode` for every build you
   publish. The in-app updater compares `versionCode` only.
+- Since build 19 the app reads the update feed from BOTH https://voxelport.github.io/dl/android.json (the main website) and
+  https://voxelport.in/dl/android.json, takes the newer of the two, and downloads the APK from whichever site the feed came from. Earlier
+  builds only know voxelport.in, so a release is always published there first and then mirrored to GitHub Pages
+  (`deploy/publish-android.sh` in the website project reads the voxelport.in feed, checks size and SHA-256, and copies both files).
+- Building on Windows works too: JDK 21 (Gradle runs on it), the Android SDK with the packages above, and for `vpmobile.aar`
+  `gomobile bind` run on a COPY of the cli project (it edits go.mod). The Java runtime asset can be taken from the last released APK
+  (`assets/jre25-arm64.tar.xz`). Put `sdk.dir=C:/path/to/sdk` in `local.properties` (forward slashes).
 - `tools/publish-android.sh` is how the official build is published to voxelport.in. It reads the version
   from the APK itself, refuses to publish an older build over a newer one and writes the update manifest
   the app checks. It runs on VoxelPort's own server and is here for reference.

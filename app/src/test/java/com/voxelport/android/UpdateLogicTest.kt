@@ -58,6 +58,50 @@ class UpdateLogicTest {
         assertNotNull(UpdateLogic.parse(json(sha256 = sha.uppercase()))) // case doesn't matter
     }
 
+    @Test fun bothOfOurSitesAreTrustedAndNothingElse() {
+        assertTrue(UpdateLogic.trustedApkUrl("https://voxelport.github.io/dl/voxelport-android.apk?v=ab12cd34"))
+        assertTrue(UpdateLogic.trustedUrl("https://voxelport.github.io/dl/android.json?t=1"))
+        assertTrue(UpdateLogic.trustedUrl("https://voxelport.in/dl/android.json"))
+        for (bad in listOf(
+            "https://voxelport.github.io.evil.example/dl/x.apk",
+            "https://evil.example/voxelport.github.io/dl/x.apk",
+            "https://github.io/dl/x.apk",
+            "https://other.github.io/dl/x.apk",
+            "http://voxelport.github.io/dl/x.apk",
+            "https://voxelport.github.io@evil.example/dl/x.apk",
+            "https://voxelport.github.io:8443/dl/x.apk",
+            "https://voxelport.github.io/dl/../x.apk",
+            "https://voxelport.github.io/other/x.apk",
+        )) {
+            assertFalse(bad, UpdateLogic.trustedApkUrl(bad))
+            assertNull(bad, UpdateLogic.parse(json(url = bad)))
+        }
+        assertFalse(UpdateLogic.trustedUrl("https://evil.example/dl/android.json"))
+        assertFalse(UpdateLogic.trustedUrl("not a url"))
+    }
+
+    @Test fun aRelativeApkAddressStaysOnTheSiteTheFeedCameFrom() {
+        val fromMain = UpdateLogic.parse(json(), "https://voxelport.github.io/dl/android.json")!!
+        assertEquals("https://voxelport.github.io/dl/voxelport-android.apk?v=ab12cd34", fromMain.url)
+        val fromOld = UpdateLogic.parse(json(), "https://voxelport.in/dl/android.json")!!
+        assertEquals("https://voxelport.in/dl/voxelport-android.apk?v=ab12cd34", fromOld.url)
+        // An absolute address on the other trusted site is accepted too (a feed may name it), but never a foreign one.
+        assertNotNull(UpdateLogic.parse(json(url = "https://voxelport.in/dl/x.apk"), "https://voxelport.github.io/dl/android.json"))
+        assertNull(UpdateLogic.parse(json(url = "https://evil.example/dl/x.apk"), "https://voxelport.github.io/dl/android.json"))
+    }
+
+    @Test fun theNewestFeedWinsAndTheMainSiteWinsATie() {
+        val main = UpdateLogic.parse(json(code = "19"), "https://voxelport.github.io/dl/android.json")!!
+        val old = UpdateLogic.parse(json(code = "18"), "https://voxelport.in/dl/android.json")!!
+        val sameOld = UpdateLogic.parse(json(code = "19"), "https://voxelport.in/dl/android.json")!!
+        assertEquals(main, UpdateLogic.newest(listOf(main, old)))
+        assertEquals(main, UpdateLogic.newest(listOf(old, main)))               // order does not matter when one is newer
+        assertEquals(main, UpdateLogic.newest(listOf(main, sameOld)))           // a tie keeps the first (the main site)
+        assertEquals(old, UpdateLogic.newest(listOf(old)))                      // one feed down: the other still counts
+        assertNull(UpdateLogic.newest(emptyList()))
+        assertEquals(listOf("https://voxelport.github.io/dl/android.json", "https://voxelport.in/dl/android.json"), UpdateLogic.MANIFEST_URLS)
+    }
+
     @Test fun checksAtMostEverySixHoursUnlessAsked() {
         val h = 3600_000L
         val now = 100 * h
