@@ -520,7 +520,7 @@ private fun App() {
                     Image(ImageBitmap.imageResource(R.drawable.vp_logo), null, Modifier.size(46.dp), filterQuality = FilterQuality.None)
                     Column(Modifier.weight(1f)) {
                         Text("VOXELPORT", fontSize = 26.sp, fontWeight = FontWeight.Black, color = VP.Ink)
-                        Text("Host Minecraft from your phone", color = VP.Muted, fontSize = 13.sp)
+                        Text(if (BuildConfig.IS_DEV) "DEV BUILD ${Updater.installedName(ctx)} · testing only" else "Host Minecraft from your phone", color = if (BuildConfig.IS_DEV) VP.Gold else VP.Muted, fontSize = 13.sp)
                     }
                     when {
                         st != null -> StatusPill("ONLINE", VP.Grass)

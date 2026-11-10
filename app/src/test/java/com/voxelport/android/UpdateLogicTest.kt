@@ -120,4 +120,23 @@ class UpdateLogicTest {
         assertFalse(UpdateLogic.sameApp("com.voxelport.android", "com.voxelport.android", mine, setOf("bb")))
         assertTrue(UpdateLogic.sameApp("com.voxelport.android", "com.voxelport.android", mine, emptySet())) // unreadable: installer decides
     }
+
+    // The private dev channel: a feed with a secret file name on voxelport.in, and a relative APK address that resolves next to it.
+    @Test fun theDevFeedIsAcceptedOnlyForAnApkNextToIt() {
+        val feed = "https://voxelport.in/dl/dev-8217111cfbb046eb68212d9a.json"
+        val sha = "a".repeat(64)
+        fun dev(url: String) = """{"versionCode":505272,"versionName":"dev-fa4fd5c","url":"$url","sha256":"$sha","size":54622398,"notes":"dev"}"""
+        val m = UpdateLogic.parse(dev("/dl/dev-8217111cfbb046eb68212d9a.apk?v=489aed74"), feed)!!
+        assertEquals("https://voxelport.in/dl/dev-8217111cfbb046eb68212d9a.apk?v=489aed74", m.url)
+        assertEquals(505272L, m.versionCode)
+        assertNull(UpdateLogic.parse(dev("https://evil.example/dl/x.apk"), feed))      // another host: refused
+        assertNull(UpdateLogic.parse(dev("/elsewhere/x.apk"), feed))                    // not under /dl/: refused
+        assertNull(UpdateLogic.parse(dev("/dl/dev-8217111cfbb046eb68212d9a.zip"), feed)) // not an .apk: refused
+    }
+
+    // The normal app must keep reading only the two public feeds, never a dev feed (the debug unit-test build has the normal values).
+    @Test fun theNormalBuildReadsOnlyThePublicFeeds() {
+        assertFalse(BuildConfig.IS_DEV)
+        assertTrue(UpdateLogic.MANIFEST_URLS.none { it.contains("/dl/dev-") })
+    }
 }

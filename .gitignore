@@ -10,5 +10,7 @@ app/src/main/assets/jre25-arm64.tar.xz
 
 # release signing (never commit)
 keystore.properties
+# the private dev channel's secret feed name
+dev.properties
 *.jks
 *.keystore

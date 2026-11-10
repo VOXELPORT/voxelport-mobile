@@ -7,7 +7,8 @@ import java.net.URI
  * The rules of the self-updater, kept free of Android calls so they can be unit-tested.
  *
  * The app fetches the update feed from [MANIFEST_URLS] (the main site, voxelport.github.io, and voxelport.in, which installed
- * copies of earlier builds still read) and takes the newer of the two. The feed is a small JSON file the publish script writes next to the APK:
+ * copies of earlier builds still read) and takes the newer of the two. The private dev build reads only its own secret feed on voxelport.in
+ * (set in build.gradle.kts), never these. The feed is a small JSON file the publish script writes next to the APK:
  *   { "versionCode": 7, "versionName": "1.0.0", "url": "/dl/voxelport-android.apk?v=ab12cd34",
  *     "sha256": "…64 hex…", "size": 53179362, "notes": "What changed" }
  * Updates are decided by versionCode (the visible versionName can stay put).
@@ -15,7 +16,7 @@ import java.net.URI
 object UpdateLogic {
     /** The two places the app may read the feed from and download the APK from, and nowhere else. */
     val HOSTS = setOf("voxelport.github.io", "voxelport.in")
-    val MANIFEST_URLS = listOf("https://voxelport.github.io/dl/android.json", "https://voxelport.in/dl/android.json")
+    val MANIFEST_URLS: List<String> = BuildConfig.UPDATE_FEEDS.split(",")
     private const val MAX_APK_BYTES = 300L * 1024 * 1024
 
     data class Manifest(

@@ -83,6 +83,18 @@ keyPassword=...
 `keystore.properties`, `*.jks` and `*.keystore` are in `.gitignore`. **Never commit them**, and back the
 key up somewhere safe: losing it means your installed users can never update.
 
+## Private dev build (testing on your own phone)
+
+`assembleDev` makes **VoxelPort Dev**: another package (`com.voxelport.android.dev`, so it installs next to the real app and never touches it),
+signed with the release key, with a version that rises with every build. It updates itself from a **private feed**: a file on voxelport.in
+with a secret name, `/dl/dev-<devToken>.json`. The real app never reads that feed, and the dev app never reads the public one.
+
+1. Put `devToken=<random hex, 16+ characters>` in `dev.properties` (gitignored). Anyone with the token can fetch the dev build.
+2. Run `bash tools/publish-dev.sh "what changed"`. It builds the dev app, uploads the APK and the feed over ssh, and prints the install link.
+3. On the phone, open the install link once. After that the dev app offers each newer dev build itself (it checks when it opens, at most every 6 hours; the footer button checks at once).
+
+The dev app has its own identity, so sign in to Discord once in it. Do not run its server and the real app's server at the same time (both use port 25565 on the phone).
+
 ## Notes for maintainers
 
 - The visible version is `versionName` in `app/build.gradle.kts`; raise `versionCode` for every build you
