@@ -136,6 +136,11 @@ private fun App() {
     var testing by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
     var fixHidden by remember { mutableStateOf("") }
+    // The whitelist on the Players page: who is on it, whether it is on, and what the server said to the last command.
+    var wlNames by remember { mutableStateOf(listOf<String>()) }
+    var wlOn by remember { mutableStateOf(false) }
+    var wlNote by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    var wlWait by remember { mutableStateOf(false) }
 
     // Custom address box.
     var nameInput by remember { mutableStateOf(prefs.claimName) }
@@ -176,7 +181,10 @@ private fun App() {
                 val (lines, p) = withContext(Dispatchers.IO) { tail(files.log.path, pos) }
                 if (p < pos) { log = emptyList(); online = emptyList() }
                 pos = p
-                if (lines.isNotEmpty()) { log = (log + lines).takeLast(400); online = Players.apply(online, lines) }
+                if (lines.isNotEmpty()) {
+                    log = (log + lines).takeLast(400); online = Players.apply(online, lines)
+                    Whitelist.answer(lines)?.let { wlNote = Whitelist.message(it); wlWait = false }
+                }
                 if (!a) online = emptyList()
                 if (a) withContext(Dispatchers.IO) {
                     hot = Build.VERSION.SDK_INT >= 29 && ctx.getSystemService(PowerManager::class.java).currentThermalStatus >= 2 // moderate or worse
@@ -368,6 +376,26 @@ private fun App() {
     LaunchedEffect(tunnel.on) { if (!tunnel.on) testResult = null }
     val phoneReport = remember { PhoneCheck.check(device.ramMb, device.cores, ctx.filesDir.usableSpace, Build.VERSION.SDK_INT) }
 
+    // While the Players page is open: read the whitelist and its on/off state from the server folder every couple of seconds.
+    LaunchedEffect(screen == "players") {
+        while (screen == "players") {
+            val (names, on) = withContext(Dispatchers.IO) {
+                val list = java.io.File(files.server, "whitelist.json").takeIf { it.isFile }?.let { runCatching { it.readText() }.getOrNull() }.orEmpty()
+                Whitelist.names(list) to Whitelist.isOn(runCatching { ServerProps.read(java.io.File(files.server, "server.properties")) }.getOrDefault(emptyMap()))
+            }
+            wlNames = names; wlOn = on
+            delay(2000)
+        }
+    }
+    // A whitelist command was sent: if the server says nothing in a few seconds, say so instead of leaving the page silent.
+    LaunchedEffect(wlWait) {
+        if (wlWait) {
+            delay(7000)
+            if (wlWait) { wlWait = false; wlNote = t("The server didn't answer. It may still be starting, or it did not understand the command. Check the Console under More.") to false }
+        }
+    }
+    LaunchedEffect(wlNote) { if (wlNote != null) { delay(15_000); wlNote = null } }
+
     val homeScroll = rememberScrollState()
     val moreScroll = rememberScrollState()
     BackHandler(enabled = screen != "home") { screen = "home" }
@@ -392,8 +420,10 @@ private fun App() {
             "backups" -> BackupsScreen(files, alive, status != null) { screen = "home" }
             "console" -> ConsoleScreen(log, alive, { line -> ServerService.send(ctx, ServerService.ACTION_COMMAND) { putExtra(ServerService.EXTRA_LINE, line) } }) { screen = "home" }
             "players" -> PlayersScreen(
-                online, status?.optInt("max") ?: 0, alive, tunnel.address.ifEmpty { if (tunnel.port > 0) "${tunnel.host.ifEmpty { "play.voxelport.in" }}:${tunnel.port}" else "" },
+                online, status?.optInt("players", -1) ?: -1, status?.optInt("max") ?: 0, alive, tunnel.address.ifEmpty { if (tunnel.port > 0) "${tunnel.host.ifEmpty { "play.voxelport.in" }}:${tunnel.port}" else "" },
+                wlNames, wlOn, files.bedrockComplete, wlNote, wlWait,
                 { cmd -> ServerService.send(ctx, ServerService.ACTION_COMMAND) { putExtra(ServerService.EXTRA_LINE, cmd) } },
+                { cmd -> wlNote = null; wlWait = true; ServerService.send(ctx, ServerService.ACTION_COMMAND) { putExtra(ServerService.EXTRA_LINE, cmd) } },
                 { val a = tunnel.address.ifEmpty { "${tunnel.host.ifEmpty { "play.voxelport.in" }}:${tunnel.port}" }; share(ctx, Invite.build(a, version = version, plainAddress = a, bedrockHost = null, bedrockPort = 0)) },
             )
             "more" -> Column(

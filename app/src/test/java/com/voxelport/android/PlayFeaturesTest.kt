@@ -242,3 +242,58 @@ class AddressTestTest {
         assertFalse(AddressTest.explain(AddressTest.Result.TimedOut).second)
     }
 }
+
+class WhitelistTest {
+    private fun info(msg: String) = "[12:00:01 INFO]: $msg"
+
+    @Test fun `names are read from whitelist json, sorted, and a broken or empty file gives nothing`() {
+        val json = """[{"uuid":"1","name":"zed"},{"uuid":"2","name":"Alex"},{"uuid":"3","name":".Bedrock_Pal"},{"uuid":"4"}]"""
+        assertEquals(listOf(".Bedrock_Pal", "Alex", "zed"), Whitelist.names(json))
+        assertEquals(emptyList<String>(), Whitelist.names(""))
+        assertEquals(emptyList<String>(), Whitelist.names("not json"))
+        assertEquals(emptyList<String>(), Whitelist.names("[]"))
+    }
+
+    @Test fun `the whitelist is on only when server properties say so`() {
+        assertTrue(Whitelist.isOn(mapOf("white-list" to "true")))
+        assertTrue(Whitelist.isOn(mapOf("white-list" to "TRUE")))
+        assertFalse(Whitelist.isOn(mapOf("white-list" to "false")))
+        assertFalse(Whitelist.isOn(emptyMap()))
+    }
+
+    @Test fun `a Java name uses whitelist and a Bedrock name uses Floodgate's fwhitelist`() {
+        assertEquals("whitelist add Steve", Whitelist.addCommand("Steve", false))
+        assertEquals("fwhitelist add Alex", Whitelist.addCommand("Alex", true))
+        assertEquals("fwhitelist add Alex", Whitelist.addCommand(".Alex", false)) // a leading dot is how Bedrock players show up
+        assertEquals("whitelist remove Steve", Whitelist.removeCommand("Steve"))
+        assertEquals("fwhitelist remove Alex", Whitelist.removeCommand(".Alex"))
+        assertNull(Whitelist.addCommand("Steve; stop", false))
+        assertNull(Whitelist.addCommand("", false))
+    }
+
+    @Test fun `the server's answers are recognised`() {
+        assertEquals(Whitelist.Result.ADDED, Whitelist.answer(listOf(info("Added Steve to the whitelist"))))
+        assertEquals(Whitelist.Result.ALREADY, Whitelist.answer(listOf(info("Player is already whitelisted"))))
+        assertEquals(Whitelist.Result.NO_SUCH_PLAYER, Whitelist.answer(listOf(info("That player does not exist"))))
+        assertEquals(Whitelist.Result.REMOVED, Whitelist.answer(listOf(info("Removed Steve from the whitelist"))))
+        assertEquals(Whitelist.Result.NOT_LISTED, Whitelist.answer(listOf(info("Player is not whitelisted"))))
+        assertEquals(Whitelist.Result.TURNED_ON, Whitelist.answer(listOf(info("Whitelist is now turned on"))))
+        assertEquals(Whitelist.Result.TURNED_OFF, Whitelist.answer(listOf(info("Whitelist is now turned off"))))
+        assertEquals(Whitelist.Result.ALREADY_ON, Whitelist.answer(listOf(info("Whitelist is already turned on"))))
+    }
+
+    @Test fun `unrelated lines give no answer, and the newest answer wins`() {
+        assertNull(Whitelist.answer(listOf(info("Steve joined the game"), info("Saving the game"))))
+        assertNull(Whitelist.answer(emptyList()))
+        val lines = listOf(info("That player does not exist"), info("Steve joined the game"), info("Added Steve to the whitelist"), info("Saved the game"))
+        assertEquals(Whitelist.Result.ADDED, Whitelist.answer(lines))
+    }
+
+    @Test fun `every answer has a plain message, and a failure says what to try`() {
+        for (r in Whitelist.Result.values()) assertTrue(Whitelist.message(r).first.isNotBlank())
+        val (text, ok) = Whitelist.message(Whitelist.Result.NO_SUCH_PLAYER)
+        assertFalse(ok)
+        assertTrue(text.contains("Bedrock"))
+        assertTrue(Whitelist.message(Whitelist.Result.ADDED).second)
+    }
+}
