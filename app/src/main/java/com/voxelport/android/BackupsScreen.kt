@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,7 +40,6 @@ import java.util.Date
 fun BackupsScreen(files: Files, alive: Boolean, online: Boolean, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val lang = Lang.current
     val runner = remember { BackupRunner(BackupPlace.of(files), ServerService.appBuild(ctx)) }
     var settings by remember { mutableStateOf(runner.settings()) }
     var status by remember { mutableStateOf(BackupStatus()) }
@@ -106,15 +106,15 @@ fun BackupsScreen(files: Files, alive: Boolean, online: Boolean, onBack: () -> U
             )
             val last = items.firstOrNull { it.reason != "before-restore" }
             Text(
-                if (last == null) t("No backup yet.") else t("Last backup: {ago}", "ago" to BackupsLogic.ago(lang, now, last.createdAt)),
+                if (last == null) t("No backup yet.") else t("Last backup: {ago}", "ago" to BackupsLogic.ago(now, last.createdAt)),
                 fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (last == null) VP.Red else VP.GrassDark,
             )
             if (active) {
                 if (status.total > 0) LinearProgressIndicator({ (status.done.toFloat() / status.total).coerceIn(0f, 1f) }, Modifier.fillMaxWidth(), color = VP.Grass)
                 else LinearProgressIndicator(Modifier.fillMaxWidth(), color = VP.Grass)
-                Text(BackupsLogic.phase(lang, status.phase), fontSize = 13.sp, color = VP.Ink)
+                Text(BackupsLogic.phase(status.phase), fontSize = 13.sp, color = VP.Ink)
             } else if (status.finishedAt > 0 && now - status.finishedAt < 120_000) {
-                Text(BackupsLogic.result(lang, status), fontSize = 13.sp, color = if (status.phase == "failed") VP.Red else VP.GrassDark)
+                Text(BackupsLogic.result(status), fontSize = 13.sp, color = if (status.phase == "failed") VP.Red else VP.GrassDark)
             }
             if (note.isNotEmpty()) Text(note, fontSize = 13.sp, color = VP.Ink)
             VpButton(
@@ -133,7 +133,7 @@ fun BackupsScreen(files: Files, alive: Boolean, online: Boolean, onBack: () -> U
             }
             if (settings.auto) {
                 Text("Back up every", fontSize = 12.sp, color = VP.Muted)
-                Choices((BackupSettings.INTERVALS + settings.intervalMin).distinct().sorted(), settings.intervalMin, { BackupsLogic.interval(lang, it) }) {
+                Choices((BackupSettings.INTERVALS + settings.intervalMin).distinct().sorted(), settings.intervalMin, { BackupsLogic.interval(it) }) {
                     saveSettings(settings.copy(intervalMin = it))
                 }
                 Text("Keep the newest automatic backups", fontSize = 12.sp, color = VP.Muted)
@@ -163,7 +163,7 @@ fun BackupsScreen(files: Files, alive: Boolean, online: Boolean, onBack: () -> U
                     Column {
                         Text(dateFmt.format(Date(b.createdAt)), fontWeight = FontWeight.Black, fontSize = 15.sp)
                         Text(
-                            "${BackupsLogic.reason(lang, b.reason)} · ${BackupsLogic.size(b.size)} · ${BackupsLogic.ago(lang, now, b.createdAt)}",
+                            "${BackupsLogic.reason(b.reason)} · ${BackupsLogic.size(b.size)} · ${BackupsLogic.ago(now, b.createdAt)}",
                             color = VP.Muted, fontSize = 12.sp,
                         )
                     }
@@ -174,7 +174,7 @@ fun BackupsScreen(files: Files, alive: Boolean, online: Boolean, onBack: () -> U
                     }
                 }
             }
-            val hint = BackupsLogic.restoreHint(lang, alive)
+            val hint = BackupsLogic.restoreHint(alive)
             if (hint.isNotEmpty() && items.isNotEmpty()) Text(hint, color = VP.Muted, fontSize = 12.sp)
         }
         Spacer(Modifier.height(24.dp))
@@ -196,7 +196,7 @@ fun BackupsScreen(files: Files, alive: Boolean, online: Boolean, onBack: () -> U
                 TextButton({
                     restoring = null
                     note = ""
-                    if (ServerService.isAlive(ctx)) note = BackupsLogic.restoreHint(lang, true)
+                    if (ServerService.isAlive(ctx)) note = BackupsLogic.restoreHint(true)
                     else scope.launch(Dispatchers.IO) { runner.restore(b.name) }
                 }) { Text("Restore") }
             },
@@ -239,7 +239,7 @@ fun LastBackupLine(files: Files) {
     }
     if (last < 0) return
     Text(
-        if (last == 0L) t("No backup yet.") else t("Last backup: {ago}", "ago" to BackupsLogic.ago(Lang.current, now, last)),
+        if (last == 0L) t("No backup yet.") else t("Last backup: {ago}", "ago" to BackupsLogic.ago(now, last)),
         color = if (last == 0L) VP.Red else VP.Muted, fontSize = 12.sp,
     )
 }

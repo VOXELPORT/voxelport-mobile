@@ -64,7 +64,6 @@ server too.
 - 🗑️ **Delete server:** remove a server's world, plugins and settings from the phone when you are done. Your backups and address are kept.
 - 📣 **Relay announcements:** if the relay is about to restart, you see it in the app and your players see it in the game chat.
 - 📋 **Share an invite:** a ready message with the address and Bedrock instructions.
-- 🇮🇳 **Hinglish interface:** switch the whole app to Hinglish (Hindi in the English alphabet).
 - 🔓 **Cracked players:** an optional switch that states its risks before it turns anything on, with one-tap login protection.
 - 🔄 **Updates itself** from voxelport.in, because the app is sideloaded and there is no store to do it.
 

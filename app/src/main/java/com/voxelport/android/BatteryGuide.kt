@@ -1,5 +1,6 @@
 package com.voxelport.android
 
+import androidx.compose.material3.Text
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent

@@ -60,7 +60,6 @@ class TunnelService : Service() {
     override fun onCreate() {
         super.onCreate()
         DataMeter.init(this)
-        Lang.init(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -138,9 +137,9 @@ class TunnelService : Service() {
         if (!again) lastSaid = message to now
         val left = seconds.coerceAtLeast(0)
         _state.update { it.copy(announcement = Announcement(message, if (left > 0) now + left * 1000L else 0L)) }
-        if (!again) Notify.announce(this, "VoxelPort announcement", message + if (left > 0) " (" + NoticeLogic.timeLeftPhrase(left.toLong(), Lang.current) + ")" else "")
+        if (!again) Notify.announce(this, "VoxelPort announcement", message + if (left > 0) " (" + NoticeLogic.timeLeftPhrase(left.toLong()) + ")" else "")
 
-        val plan = NoticeLogic.plan(message, left, Lang.current, again)
+        val plan = NoticeLogic.plan(message, left, again)
         if (plan.isEmpty()) return
         noticeJob = scope.launch {
             var elapsed = 0

@@ -69,11 +69,6 @@ class Prefs(private val ctx: Context) {
         get() = p.getBoolean("battery_guide_done", false)
         set(v) = p.edit().putBoolean("battery_guide_done", v).apply()
 
-    /** The app's language: "en" or "hinglish"; null until the person picks one (then the phone's language decides). */
-    var language: String?
-        get() = p.getString("lang", null)
-        set(v) = p.edit().putString("lang", v).apply()
-
     /** Server software to install: "paper" (plugins) or "fabric" (mods). */
     var type: String
         get() = p.getString("type", "paper") ?: "paper"

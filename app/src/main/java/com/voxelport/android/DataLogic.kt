@@ -89,8 +89,8 @@ object DataLogic {
     fun installEstimateMb(fabric: Boolean, bedrock: Boolean): Int = (if (fabric) 70 else 110) + (if (bedrock) 25 else 0)
 
     /** What one player online costs in mobile data, in a few words ("about 10–50 MB per hour…"). */
-    fun perPlayerText(lang: String = Lang.current) =
-        translate(lang, "about 10–50 MB per hour for each player online (much more while they explore new land)")
+    fun perPlayerText() =
+        fill("about 10–50 MB per hour for each player online (much more while they explore new land)")
 
     // ── text ──
     fun format(bytes: Long): String = when {

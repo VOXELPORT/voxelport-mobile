@@ -18,18 +18,17 @@ object NoticeLogic {
     fun chatSafe(text: String?): String =
         (text ?: "").replace(Regex("[\\u0000-\\u001f\\u007f\\u00a7]"), " ").replace(Regex("\\s+"), " ").trim().take(MAX_CHAT)
 
-    /** "in 10 minutes" for a number of seconds left, in the given language. */
-    fun timeLeftPhrase(seconds: Long, lang: String): String {
-        val hinglish = lang == Lang.HINGLISH
-        if (seconds <= 0) return if (hinglish) "abhi" else "now"
-        if (seconds < 60) return if (hinglish) "1 minute se kam mein" else "in less than a minute"
+    /** "in 10 minutes" for a number of seconds left. */
+    fun timeLeftPhrase(seconds: Long): String {
+        if (seconds <= 0) return "now"
+        if (seconds < 60) return "in less than a minute"
         val minutes = (seconds + 59) / 60
         return when {
-            minutes == 1L -> if (hinglish) "1 minute mein" else "in 1 minute"
-            minutes < 120 -> if (hinglish) "$minutes minute mein" else "in $minutes minutes"
+            minutes == 1L -> "in 1 minute"
+            minutes < 120 -> "in $minutes minutes"
             else -> {
                 val hours = (minutes + 30) / 60
-                if (hinglish) "lagbhag $hours ghante mein" else "in about $hours hour${if (hours == 1L) "" else "s"}"
+                "in about $hours hour${if (hours == 1L) "" else "s"}"
             }
         }
     }
@@ -38,11 +37,11 @@ object NoticeLogic {
      * What to say in the game's chat, as (seconds from now, line): at once (unless this is the same notice again),
      * again as the time runs out, and once when it is due. A notice with no time is said once, with no time in it.
      */
-    fun plan(message: String, seconds: Int, lang: String, repeat: Boolean): List<Pair<Int, String>> {
+    fun plan(message: String, seconds: Int, repeat: Boolean): List<Pair<Int, String>> {
         val text = chatSafe(message)
         if (text.isEmpty()) return emptyList()
         val s = seconds.coerceAtLeast(0)
-        fun line(left: Long, timed: Boolean) = "[VoxelPort] $text" + if (timed) " (${timeLeftPhrase(left, lang)})" else ""
+        fun line(left: Long, timed: Boolean) = "[VoxelPort] $text" + if (timed) " (${timeLeftPhrase(left)})" else ""
         val out = mutableListOf<Pair<Int, String>>()
         if (!repeat) out += 0 to line(s.toLong(), s > 0)
         if (s > 0) {

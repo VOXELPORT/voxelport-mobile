@@ -23,7 +23,6 @@ class ServerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Lang.init(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

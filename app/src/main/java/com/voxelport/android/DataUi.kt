@@ -41,22 +41,20 @@ fun DataAskDialog(ask: DataAsk, onClose: () -> Unit) {
 }
 
 /** What to do before a download of about [mb] MB, given the connection and the user's limit setting. */
-fun downloadAsk(limitMb: Int, metered: Boolean, mobileToday: Long, what: String, mb: Int, lang: String = Lang.current, onGo: () -> Unit): DataAsk? {
-    val thing = translate(lang, what)
+fun downloadAsk(limitMb: Int, metered: Boolean, mobileToday: Long, what: String, mb: Int, onGo: () -> Unit): DataAsk? {
+    val thing = fill(what)
     return when (DataLogic.downloadCheck(limitMb, metered)) {
         DataLogic.DownloadCheck.OK -> null
         DataLogic.DownloadCheck.ASK -> DataAsk(
-            translate(lang, "Download on mobile data?"),
-            translate(
-                lang, "{what} is about {mb} MB. You're on mobile data, so it counts against your plan (VoxelPort has used {used} today).",
+            fill("Download on mobile data?"),
+            fill("{what} is about {mb} MB. You're on mobile data, so it counts against your plan (VoxelPort has used {used} today).",
                 mapOf("what" to thing, "mb" to mb, "used" to DataLogic.format(mobileToday)),
-            ) + "\n\n" + translate(lang, "Wi‑Fi is better for this: it's free and faster."),
-            translate(lang, "Download anyway"), onGo,
+            ) + "\n\n" + fill("Wi‑Fi is better for this: it's free and faster."),
+            fill("Download anyway"), onGo,
         )
         DataLogic.DownloadCheck.BLOCKED -> DataAsk(
-            translate(lang, "Connect to Wi‑Fi first"),
-            translate(
-                lang, "{what} is about {mb} MB, and VoxelPort is set to Wi‑Fi only. Connect to Wi‑Fi, or change the limit under Data use on the main screen.",
+            fill("Connect to Wi‑Fi first"),
+            fill("{what} is about {mb} MB, and VoxelPort is set to Wi‑Fi only. Connect to Wi‑Fi, or change the limit under Data use on the main screen.",
                 mapOf("what" to thing, "mb" to mb),
             ),
             null,

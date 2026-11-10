@@ -16,7 +16,6 @@ object Notify {
     private const val CHANNEL = "server"
 
     fun build(ctx: Context, title: String, text: String): Notification {
-        Lang.ensure(ctx)
         val nm = ctx.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, t("Server running"), NotificationManager.IMPORTANCE_LOW))
         val open = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
@@ -44,7 +43,6 @@ object Notify {
 
     /** A one-off heads-up about data use; separate from the ongoing notification so it makes a sound and can be swiped away. */
     fun alert(ctx: Context, title: String, text: String) {
-        Lang.ensure(ctx)
         val nm = ctx.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(ALERTS, t("Data use"), NotificationManager.IMPORTANCE_DEFAULT))
         val open = PendingIntent.getActivity(ctx, 2, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
@@ -66,7 +64,6 @@ object Notify {
 
     /** The relay operator's announcement ("the relay will restart in 10 minutes"). [text] is the operator's own wording, shown as is. */
     fun announce(ctx: Context, title: String, text: String) {
-        Lang.ensure(ctx)
         val nm = ctx.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(ANNOUNCEMENTS, t("Announcements"), NotificationManager.IMPORTANCE_DEFAULT))
         val open = PendingIntent.getActivity(ctx, 3, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)

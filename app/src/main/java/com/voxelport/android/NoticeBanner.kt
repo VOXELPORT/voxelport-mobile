@@ -3,6 +3,7 @@ package com.voxelport.android
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -26,7 +27,7 @@ fun NoticeBanner(a: Announcement, serverRunning: Boolean) {
         Text(a.message, fontSize = 14.sp, color = VP.OnGold)
         if (a.dueAtMs > 0) {
             val left = ((a.dueAtMs - now) / 1000).coerceAtLeast(0)
-            Text(t("Happens {when}.", "when" to NoticeLogic.timeLeftPhrase(left, Lang.current)), fontSize = 12.sp, color = VP.OnGold)
+            Text(t("Happens {when}.", "when" to NoticeLogic.timeLeftPhrase(left)), fontSize = 12.sp, color = VP.OnGold)
         }
         if (serverRunning) Text("Players on your server are told in the game's chat.", fontSize = 12.sp, color = VP.OnGold)
     }

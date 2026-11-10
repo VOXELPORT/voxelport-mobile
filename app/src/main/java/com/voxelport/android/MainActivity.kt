@@ -63,7 +63,6 @@ class MainActivity : ComponentActivity() {
         // First: it records whether this install already had a device token, before anything creates one.
         AppAccount.init(applicationContext)
         DataMeter.init(applicationContext)
-        Lang.init(applicationContext)
         setContent { VpTheme { Root() } }
     }
 }
@@ -367,7 +366,7 @@ private fun App() {
     // Never stay "working" forever (a slow download can take a while, but not this long).
     LaunchedEffect(playing) { if (playing) { delay(20 * 60_000L); playing = false } }
     LaunchedEffect(tunnel.on) { if (!tunnel.on) testResult = null }
-    val phoneReport = remember(Lang.current) { PhoneCheck.check(device.ramMb, device.cores, ctx.filesDir.usableSpace, Build.VERSION.SDK_INT) }
+    val phoneReport = remember { PhoneCheck.check(device.ramMb, device.cores, ctx.filesDir.usableSpace, Build.VERSION.SDK_INT) }
 
     val homeScroll = rememberScrollState()
     val moreScroll = rememberScrollState()
@@ -395,7 +394,7 @@ private fun App() {
             "players" -> PlayersScreen(
                 online, status?.optInt("max") ?: 0, alive, tunnel.address.ifEmpty { if (tunnel.port > 0) "${tunnel.host.ifEmpty { "play.voxelport.in" }}:${tunnel.port}" else "" },
                 { cmd -> ServerService.send(ctx, ServerService.ACTION_COMMAND) { putExtra(ServerService.EXTRA_LINE, cmd) } },
-                { val a = tunnel.address.ifEmpty { "${tunnel.host.ifEmpty { "play.voxelport.in" }}:${tunnel.port}" }; share(ctx, Invite.build(Lang.current, a, version = version, plainAddress = a, bedrockHost = null, bedrockPort = 0)) },
+                { val a = tunnel.address.ifEmpty { "${tunnel.host.ifEmpty { "play.voxelport.in" }}:${tunnel.port}" }; share(ctx, Invite.build(a, version = version, plainAddress = a, bedrockHost = null, bedrockPort = 0)) },
             )
             "more" -> Column(
                 Modifier.fillMaxSize().systemBarsPadding().imePadding().verticalScroll(moreScroll).padding(16.dp),
@@ -499,9 +498,6 @@ private fun App() {
                         t("VoxelPort {version} · build {build}", "version" to Updater.installedName(ctx), "build" to Updater.installedCode(ctx)),
                         color = VP.Muted, fontSize = 12.sp, modifier = Modifier.weight(1f),
                     )
-                    TextButton({ Lang.set(ctx, if (Lang.current == Lang.EN) Lang.HINGLISH else Lang.EN) }) {
-                        Text(if (Lang.current == Lang.EN) "Hinglish" else "English", fontSize = 12.sp)
-                    }
                     TextButton(
                         { Updater.check(ctx, force = true) },
                         enabled = update !is UpdateState.Checking && update !is UpdateState.Downloading && update !is UpdateState.Installing,
@@ -653,20 +649,16 @@ private fun App() {
                             Text(main, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 19.sp)
                             val bedrockHost = if (tunnel.name.isNotEmpty()) "${tunnel.name}.voxelport.in" else publicHost
                             // The ready-to-send message: address, how Bedrock players join, and where the free hosting came from.
-                            fun invite(lang: String) = Invite.build(
-                                lang, main, version = version, plainAddress = plain,
+                            val invite = Invite.build(
+                                main, version = version, plainAddress = plain,
                                 bedrockHost = if (bedrock) bedrockHost else null, bedrockPort = if (bedrock) tunnel.port else 0,
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 VpButton("COPY", VP.Gold, Modifier.weight(1f)) { copy(ctx, main) }
-                                VpButton("SHARE", VP.Card, Modifier.weight(1f)) { share(ctx, invite(Lang.current)) }
+                                VpButton("SHARE", VP.Card, Modifier.weight(1f)) { share(ctx, invite) }
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                TextButton({ copy(ctx, invite(Lang.current)); inviteCopied = true }) { Text("Copy invite message", fontSize = 13.sp) }
-                                val other = if (Lang.current == Lang.EN) Lang.HINGLISH else Lang.EN
-                                TextButton({ copy(ctx, invite(other)); inviteCopied = true }) {
-                                    Text(if (other == Lang.HINGLISH) "Copy in Hinglish" else "Copy in English", fontSize = 13.sp)
-                                }
+                                TextButton({ copy(ctx, invite); inviteCopied = true }) { Text("Copy invite message", fontSize = 13.sp) }
                             }
                             if (inviteCopied) Text("Copied. Paste it into WhatsApp or Discord.", color = VP.GrassDark, fontSize = 12.sp)
                             if (tunnel.address.isNotEmpty() && plain.isNotEmpty()) Text(t("Also works: {address}", "address" to plain), fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = VP.Muted)

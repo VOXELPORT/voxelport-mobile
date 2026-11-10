@@ -81,11 +81,11 @@ class DataLogicTest {
     }
 
     @Test fun downloadQuestionsAreWordedPerSituation() {
-        assertNull(downloadAsk(500, false, 0, "Setup", 110, Lang.EN) {})
-        val ask = downloadAsk(500, true, 42 * mb, "Setting up your server", 110, Lang.EN) {}!!
+        assertNull(downloadAsk(500, false, 0, "Setup", 110) {})
+        val ask = downloadAsk(500, true, 42 * mb, "Setting up your server", 110) {}!!
         assertEquals("Download anyway", ask.go)
         assertTrue(ask.body.contains("110 MB") && ask.body.contains("42 MB") && ask.body.contains("Wi‑Fi"))
-        val blocked = downloadAsk(DataLogic.WIFI_ONLY, true, 0, "Setting up your server", 110, Lang.EN) {}!!
+        val blocked = downloadAsk(DataLogic.WIFI_ONLY, true, 0, "Setting up your server", 110) {}!!
         assertNull(blocked.go) // nothing to confirm: it is refused
     }
 

@@ -16,27 +16,22 @@ object Invite {
      * @param bedrockHost / [bedrockPort] set when Bedrock players can join
      */
     fun build(
-        lang: String, address: String, version: String? = null, name: String? = null,
+        address: String, version: String? = null, name: String? = null,
         plainAddress: String? = null, bedrockHost: String? = null, bedrockPort: Int = 0,
     ): String {
-        val hinglish = lang == Lang.HINGLISH
         val server = oneLine(name, 60)
         val ver = oneLine(version, 20).takeIf { it.isNotEmpty() && it != "unknown" }
-        val title = if (hinglish) {
-            if (server.isNotEmpty()) "🎮 Mere Minecraft server mein aao: $server" else "🎮 Mere Minecraft server mein aao!"
-        } else {
-            if (server.isNotEmpty()) "🎮 Join my Minecraft server: $server" else "🎮 Join my Minecraft server!"
-        }
+        val title = if (server.isNotEmpty()) "🎮 Join my Minecraft server: $server" else "🎮 Join my Minecraft server!"
         val addr = oneLine(address, 120)
         val plain = oneLine(plainAddress, 120)
         val lines = mutableListOf(title, "", if (ver != null) "Minecraft Java $ver" else "Minecraft Java", "Address: $addr")
-        if (plain.isNotEmpty() && plain != addr) lines += "(${if (hinglish) "ya" else "or"}: $plain)"
+        if (plain.isNotEmpty() && plain != addr) lines += "(or: $plain)"
         if (!bedrockHost.isNullOrBlank() && bedrockPort > 0) {
             lines += listOf("", "📱 Bedrock (phone / console / Windows 10):", "Server: ${oneLine(bedrockHost, 120)}   Port: $bedrockPort")
         }
         lines += ""
-        lines += if (hinglish) "Kaise judo: Minecraft → Multiplayer → Add Server → address paste karo." else "How to join: Minecraft → Multiplayer → Add Server → paste the address."
-        lines += if (hinglish) "Koi mod nahi chahiye. Free server, VoxelPort se bana hai: $SITE" else "No mods needed. Free server, hosted with VoxelPort: $SITE"
+        lines += "How to join: Minecraft → Multiplayer → Add Server → paste the address."
+        lines += "No mods needed. Free server, hosted with VoxelPort: $SITE"
         return lines.joinToString("\n")
     }
 }

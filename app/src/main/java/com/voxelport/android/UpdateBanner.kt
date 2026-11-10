@@ -1,5 +1,6 @@
 package com.voxelport.android
 
+import androidx.compose.material3.Text
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
