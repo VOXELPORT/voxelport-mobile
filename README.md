@@ -45,6 +45,11 @@ server too.
 
 ## ✨ What you get
 
+- ▶️ **One big Play button:** it installs, starts the server and makes it public, step by step, and stops with a plain message if anything fails.
+- 📱 **Phone check on first launch:** looks at RAM, free storage, cores and Android, and says how many friends the phone can host.
+- ✅ **Test my address:** joins your own public address from the outside and says in plain words if friends can get in, or which step failed.
+- 👥 **Players tab:** who is online now, with Kick, Ban and a whitelist. The notification shows the player count and your address.
+- 🛠️ **One-tap fixes:** out of memory, a port still in use, a full phone or a broken world are spotted in the console, each with a button that fixes it.
 - 🌍 **No port forwarding, even on Jio, Airtel or mobile data.** The phone dials out to the relay, so your router and home IP stay private.
 - 🧱 **A real Paper server**, with live console, a RAM slider and a performance profile (Low / Balanced / High) picked from your phone's RAM and cores. Fabric is available too, for mods.
 - 📱 **Bedrock players too:** one switch adds Geyser and Floodgate, so phone, console and Windows players join the same server.

@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -129,6 +130,13 @@ private fun App() {
     // What is installed right now (read from disk once, not on every recomposition).
     var installedType by remember { mutableStateOf(files.type) }
     var setupOpen by remember { mutableStateOf(!(files.jreReady && files.serverReady)) }
+    // The Play flow, who is online, the address test and a hidden fix card.
+    var playing by remember { mutableStateOf(false) }
+    var playStep by remember { mutableStateOf("") }
+    var online by remember { mutableStateOf(listOf<String>()) }
+    var testing by remember { mutableStateOf(false) }
+    var testResult by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    var fixHidden by remember { mutableStateOf("") }
 
     // Custom address box.
     var nameInput by remember { mutableStateOf(prefs.claimName) }
@@ -167,9 +175,10 @@ private fun App() {
                 alive = a
                 status = if (a) withContext(Dispatchers.IO) { Mobile.pingLocal(25565).takeIf { it.isNotEmpty() }?.let { JSONObject(it) } } else null
                 val (lines, p) = withContext(Dispatchers.IO) { tail(files.log.path, pos) }
-                if (p < pos) log = emptyList()
+                if (p < pos) { log = emptyList(); online = emptyList() }
                 pos = p
-                if (lines.isNotEmpty()) log = (log + lines).takeLast(400)
+                if (lines.isNotEmpty()) { log = (log + lines).takeLast(400); online = Players.apply(online, lines) }
+                if (!a) online = emptyList()
                 if (a) withContext(Dispatchers.IO) {
                     hot = Build.VERSION.SDK_INT >= 29 && ctx.getSystemService(PowerManager::class.java).currentThermalStatus >= 2 // moderate or worse
                     val b = ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
@@ -256,7 +265,10 @@ private fun App() {
         if (a == null) install() else ask = a
     }
 
-    fun startServer() = ServerService.send(ctx, ServerService.ACTION_START) { putExtra(ServerService.EXTRA_RAM_MB, ram.toInt()) }
+    fun startServer() {
+        log = emptyList(); online = emptyList(); fixHidden = ""; testResult = null
+        ServerService.send(ctx, ServerService.ACTION_START) { putExtra(ServerService.EXTRA_RAM_MB, ram.toInt()) }
+    }
 
     fun askBatteryOptimization() {
         if (!ctx.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(ctx.packageName)) {
@@ -295,9 +307,77 @@ private fun App() {
         busy = ""
     }
 
-    val homeScroll = rememberScrollState()
-    BackHandler(enabled = screen != "home") { screen = "home" }
+    // A fix for a problem the console shows (see Fixes).
+    fun applyFix(f: Fixes.Fix) {
+        fixHidden = f.kind.name
+        when (f.kind) {
+            Fixes.Kind.OUT_OF_MEMORY -> {
+                prefs.profile = "low"
+                val lower = Fixes.lowerRam(ram.toInt(), recommendedMb)
+                ram = lower.toFloat(); prefs.ramMb = lower
+                if (installed) runCatching { Tuning.applyProps(files.server, Tuning.resolve("low", device), saver) }
+                if (alive) restart() else startServer()
+            }
+            Fixes.Kind.PORT_IN_USE -> if (alive) restart() else startServer()
+            Fixes.Kind.DISK_FULL -> screen = "files"
+            Fixes.Kind.WORLD_BROKEN -> screen = "backups"
+        }
+    }
 
+    fun testAddress(host: String, port: Int) = scope.launch {
+        testing = true; testResult = null
+        val r = withContext(Dispatchers.IO) { AddressTest.run(host, port) }
+        testResult = AddressTest.explain(r)
+        testing = false
+    }
+
+    // The Play button: install if needed, start the server, wait for it to be ready, then make it public. One step at a time,
+    // each started once; it stops by itself on an error, a refusal, or when everything is online.
+    fun play() { error = ""; playStep = ""; playing = true }
+    LaunchedEffect(playing, installed, alive, status != null, tunnel.on, busy, ask, publicAsk, error) {
+        if (!playing) { playStep = ""; return@LaunchedEffect }
+        if (error.isNotEmpty()) { playing = false; return@LaunchedEffect }
+        if (busy.isNotEmpty() || ask != null || publicAsk) return@LaunchedEffect
+        when {
+            !eula -> playing = false
+            !installed -> if (playStep != "install") { playStep = "install"; installWithData() } else playing = false // the data question was declined
+            !alive -> if (playStep != "start") { playStep = "start"; startServer() }
+            status == null -> {} // starting: wait for the console's "Done!"
+            tunnel.on -> playing = false
+            playStep != "public" -> {
+                playStep = "public"
+                if (!acct.gate.allowed || hostCheck != DataLogic.HostCheck.OK) playing = false
+                else if (net.metered) { saverWithPublic = !saver; publicAsk = true }
+                else makePublic()
+            }
+        }
+        return@LaunchedEffect
+    }
+    // The server crashed while starting (or never came up): stop the flow and say so, instead of waiting for nothing.
+    var sawAlive by remember { mutableStateOf(false) }
+    LaunchedEffect(playing, playStep, alive) {
+        if (!playing || playStep != "start") { sawAlive = false; return@LaunchedEffect }
+        if (alive) { sawAlive = true; return@LaunchedEffect }
+        if (!sawAlive) delay(45_000)
+        if (!alive) {
+            playing = false
+            error = t("The server stopped before it was ready. Open the console (More) to see why, or try again.")
+        }
+    }
+    // Never stay "working" forever (a slow download can take a while, but not this long).
+    LaunchedEffect(playing) { if (playing) { delay(20 * 60_000L); playing = false } }
+    LaunchedEffect(tunnel.on) { if (!tunnel.on) testResult = null }
+    val phoneReport = remember(Lang.current) { PhoneCheck.check(device.ramMb, device.cores, ctx.filesDir.usableSpace, Build.VERSION.SDK_INT) }
+
+    val homeScroll = rememberScrollState()
+    val moreScroll = rememberScrollState()
+    BackHandler(enabled = screen != "home") { screen = "home" }
+    // The bottom bar goes away while the keyboard is up (the screens already make room for it).
+    val imeUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val showBar = screen in TABS && !imeUp
+
+    Column(Modifier.fillMaxSize()) {
+    Box(Modifier.weight(1f).then(if (showBar) Modifier.consumeWindowInsets(WindowInsets.navigationBars) else Modifier)) {
     AnimatedContent(
         screen, label = "screen",
         transitionSpec = {
@@ -312,102 +392,29 @@ private fun App() {
             "support" -> SupportScreen { screen = "home" }
             "backups" -> BackupsScreen(files, alive, status != null) { screen = "home" }
             "console" -> ConsoleScreen(log, alive, { line -> ServerService.send(ctx, ServerService.ACTION_COMMAND) { putExtra(ServerService.EXTRA_LINE, line) } }) { screen = "home" }
-            else -> Column(
-                Modifier.fillMaxSize().systemBarsPadding().imePadding().verticalScroll(homeScroll).padding(16.dp),
+            "players" -> PlayersScreen(
+                online, status?.optInt("max") ?: 0, alive, tunnel.address.ifEmpty { if (tunnel.port > 0) "${tunnel.host.ifEmpty { "play.voxelport.in" }}:${tunnel.port}" else "" },
+                { cmd -> ServerService.send(ctx, ServerService.ACTION_COMMAND) { putExtra(ServerService.EXTRA_LINE, cmd) } },
+                { val a = tunnel.address.ifEmpty { "${tunnel.host.ifEmpty { "play.voxelport.in" }}:${tunnel.port}" }; share(ctx, Invite.build(Lang.current, a, version = version, plainAddress = a, bedrockHost = null, bedrockPort = 0)) },
+            )
+            "more" -> Column(
+                Modifier.fillMaxSize().systemBarsPadding().imePadding().verticalScroll(moreScroll).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                UpdateBanner(update, alive)
-                tunnel.announcement?.let { NoticeBanner(it, alive) }
-                MobileDataBanner(net)
-                DiscordBanner(acct, { AppAccount.signIn(ctx) }, { AppAccount.cancelSignIn() }, { AppAccount.openInvite(ctx) }, { AppAccount.refresh(ctx, force = true) })
-
-                // ── Header ──
-                val st = status
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Image(ImageBitmap.imageResource(R.drawable.vp_logo), null, Modifier.size(46.dp), filterQuality = FilterQuality.None)
-                    Column(Modifier.weight(1f)) {
-                        Text("VOXELPORT", fontSize = 26.sp, fontWeight = FontWeight.Black, color = VP.Ink)
-                        Text("Host Minecraft from your phone", color = VP.Muted, fontSize = 13.sp)
-                    }
-                    when {
-                        st != null -> StatusPill("ONLINE", VP.Grass)
-                        alive -> StatusPill("STARTING", VP.Gold)
-                        busy.isNotEmpty() -> StatusPill("WORKING", VP.Gold)
-                        else -> StatusPill("STOPPED", VP.Muted)
-                    }
-                }
-
-                // ── Server ──
+                Text("MORE", fontSize = 30.sp, fontWeight = FontWeight.Black, color = VP.Ink)
                 Panel {
-                    PanelTitle("SERVER") {
-                        if (installed) TextButton({ setupOpen = !setupOpen }) { Text(if (setupOpen) "Hide setup" else "Setup") }
-                    }
-                    Text(
-                        if (installed) "${type.replaceFirstChar { it.uppercase() }} $version · Java 25"
-                        else t(
-                            "Sets up {type} (Java 25 is already inside the app). It downloads about {mb} MB: use Wi‑Fi if you can.",
-                            "type" to type.replaceFirstChar { it.uppercase() }, "mb" to DataLogic.installEstimateMb(type == "fabric", bedrock),
-                        ),
-                        color = VP.Muted, fontSize = 14.sp,
-                    )
-                    if (busy.isNotEmpty()) {
-                        LinearProgressIndicator(Modifier.fillMaxWidth(), color = VP.Grass, trackColor = TrackColor)
-                        Text(busy, color = VP.Ink, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
-                    }
-                    if (error.isNotEmpty()) Text(error, color = VP.Red, fontSize = 14.sp)
-
-                    // Primary action.
-                    when {
-                        !installed -> {
-                            VpButton("INSTALL", VP.Grass, Modifier.fillMaxWidth(), enabled = busy.isEmpty() && eula) { installWithData() }
-                            if (!eula) Text("Tick the EULA below to continue.", color = VP.Muted, fontSize = 12.sp)
-                        }
-                        !alive -> VpButton("START SERVER", VP.Grass, Modifier.fillMaxWidth(), enabled = eula && busy.isEmpty()) { startServer() }
-                        else -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            VpButton("STOP", VP.Red, Modifier.weight(1f), enabled = busy.isEmpty()) {
-                                ServerService.send(ctx, ServerService.ACTION_STOP)
-                                TunnelService.send(ctx, TunnelService.ACTION_STOP)
-                            }
-                            VpButton("RESTART", VP.Gold, Modifier.weight(1f), enabled = busy.isEmpty()) { restart() }
-                        }
-                    }
-                    Text(
-                        when {
-                            st != null -> t("Online · {version} · {players}/{max} players", "version" to st.optString("version"), "players" to st.optInt("players"), "max" to st.optInt("max"))
-                            alive -> "Starting… the first start on a phone can take a few minutes."
-                            else -> "Stopped"
-                        },
-                        color = if (st != null) VP.GrassDark else VP.Muted, fontWeight = FontWeight.Bold, fontSize = 13.sp,
-                    )
-
-                    if (installed && totalMb < 3800) Text(t("This phone has {ram} GB of RAM. Servers run best with 4 GB or more, so expect lag with more than a couple of players.", "ram" to "%.1f".format(totalMb / 1024f)), color = VP.Muted, fontSize = 13.sp)
-                    if (alive && hot) Text("Your phone is hot and may slow the server down. Let it cool, or choose Low-end in Settings → Performance.", color = VP.Red, fontSize = 13.sp)
-                    if (alive && !battery.second && battery.first <= 30) Text(t("Battery {percent}% and not charging. Plug in to keep the server running.", "percent" to battery.first), color = VP.Red, fontSize = 13.sp)
-
-                    var guideDone by remember { mutableStateOf(prefs.batteryGuideDone) }
-                    if (alive && !guideDone) {
-                        BatteryGuideCard(
-                            BatteryGuide.detect(Build.MANUFACTURER.orEmpty(), Build.BRAND.orEmpty()),
-                            onOpen = { BatteryGuide.open(ctx, BatteryGuide.detect(Build.MANUFACTURER.orEmpty(), Build.BRAND.orEmpty())) },
-                            onDismiss = { prefs.batteryGuideDone = true; guideDone = true },
-                        )
-                    }
-
+                    PanelTitle("TOOLS")
                     if (installed) {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            VpButton(if (type == "fabric") "ADD MODS" else "ADD PLUGINS", VP.Grass, Modifier.weight(1f)) { screen = "browse" }
                             VpButton("SETTINGS", VP.Card, Modifier.weight(1f)) { screen = "settings" }
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            VpButton("FILES", VP.Card, Modifier.weight(1f)) { screen = "files" }
                             VpButton("CONSOLE", VP.Card, Modifier.weight(1f)) { screen = "console" }
                         }
                         VpButton("BACKUPS", VP.Card, Modifier.fillMaxWidth()) { screen = "backups" }
                         LastBackupLine(files)
-                    }
-
-                    // Setup: EULA, Bedrock, RAM, version. Open until the first install is done.
-                    AnimatedVisibility(setupOpen || !installed) {
+                    } else Text("Set up your server on the Home page first.", color = VP.Muted, fontSize = 14.sp)
+                }
+                Panel {
+                    PanelTitle("SERVER SETUP")
                         LaunchedEffect(type, showVersions) {
                             if (showVersions) { versions = emptyList(); runCatching { versions = withContext(Dispatchers.IO) { Setup.versionsFor(type, 12) } } }
                         }
@@ -473,11 +480,141 @@ private fun App() {
                                 if (cannotDelete) Text("Stop the server first to delete it.", color = VP.Muted, fontSize = 12.sp)
                             }
                         }
+                }
+                if (installed) AccountsPanel(files, alive) { restart() }
+                DataPanel(
+                    net, usage, limitMb, { limitMb = it; prefs.dataLimitMb = it },
+                    saver, { applySaver(it) }, installed, alive, { restart() },
+                )
+
+                DiscordPanel(acct, { AppAccount.signIn(ctx) }, { AppAccount.cancelSignIn() }, { AppAccount.signOut(ctx) })
+                AddressBackupPanel(acct, tunnel.on)
+                TextButton({ identityOpen = true }) { Text("Back up or restore your address", fontSize = 13.sp) }
+
+                SupportPanel { screen = "support" }
+
+                // ── Version + manual update check ──
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        t("VoxelPort {version} · build {build}", "version" to Updater.installedName(ctx), "build" to Updater.installedCode(ctx)),
+                        color = VP.Muted, fontSize = 12.sp, modifier = Modifier.weight(1f),
+                    )
+                    TextButton({ Lang.set(ctx, if (Lang.current == Lang.EN) Lang.HINGLISH else Lang.EN) }) {
+                        Text(if (Lang.current == Lang.EN) "Hinglish" else "English", fontSize = 12.sp)
+                    }
+                    TextButton(
+                        { Updater.check(ctx, force = true) },
+                        enabled = update !is UpdateState.Checking && update !is UpdateState.Downloading && update !is UpdateState.Installing,
+                    ) { Text(if (update is UpdateState.Checking) "Checking…" else "Check for updates", fontSize = 12.sp) }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+            else -> Column(
+                Modifier.fillMaxSize().systemBarsPadding().imePadding().verticalScroll(homeScroll).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                UpdateBanner(update, alive)
+                tunnel.announcement?.let { NoticeBanner(it, alive) }
+                MobileDataBanner(net)
+                DiscordBanner(acct, { AppAccount.signIn(ctx) }, { AppAccount.cancelSignIn() }, { AppAccount.openInvite(ctx) }, { AppAccount.refresh(ctx, force = true) })
+
+                // ── Header ──
+                val st = status
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Image(ImageBitmap.imageResource(R.drawable.vp_logo), null, Modifier.size(46.dp), filterQuality = FilterQuality.None)
+                    Column(Modifier.weight(1f)) {
+                        Text("VOXELPORT", fontSize = 26.sp, fontWeight = FontWeight.Black, color = VP.Ink)
+                        Text("Host Minecraft from your phone", color = VP.Muted, fontSize = 13.sp)
+                    }
+                    when {
+                        st != null -> StatusPill("ONLINE", VP.Grass)
+                        alive -> StatusPill("STARTING", VP.Gold)
+                        busy.isNotEmpty() -> StatusPill("WORKING", VP.Gold)
+                        else -> StatusPill("STOPPED", VP.Muted)
                     }
                 }
 
-                if (installed) AccountsPanel(files, alive) { restart() }
+                if (!installed) PhoneCheckCard(phoneReport)
+                val fixNow = remember(log) { Fixes.detect(log) }
+                if (fixNow != null && status == null && !playing && fixNow.kind.name != fixHidden) FixCard(fixNow, { applyFix(fixNow) }, { fixHidden = fixNow.kind.name })
 
+                // ── Server: one big button ──
+                Panel {
+                    PanelTitle(if (installed) "YOUR SERVER" else "SET UP YOUR SERVER")
+                    Text(
+                        if (installed) "${type.replaceFirstChar { it.uppercase() }} $version · Java 25"
+                        else t(
+                            "Sets up {type} (Java 25 is already inside the app). It downloads about {mb} MB: use Wi‑Fi if you can.",
+                            "type" to type.replaceFirstChar { it.uppercase() }, "mb" to DataLogic.installEstimateMb(type == "fabric", bedrock),
+                        ),
+                        color = VP.Muted, fontSize = 14.sp,
+                    )
+                    if (busy.isNotEmpty()) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth(), color = VP.Grass, trackColor = TrackColor)
+                        Text(busy, color = VP.Ink, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                    }
+                    if (error.isNotEmpty()) Text(error, color = VP.Red, fontSize = 14.sp)
+
+                    if (!installed) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(eula, { eula = it; prefs.eula = it }, enabled = !alive)
+                            Text("I agree to the Minecraft EULA", fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            TextButton({ ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://aka.ms/MinecraftEULA"))) }) { Text("Read") }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(bedrock, { bedrock = it; prefs.bedrock = it }, enabled = !alive && busy.isEmpty())
+                            Text("Let Bedrock players join (phones, consoles)", fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        }
+                    }
+
+                    val st2 = status
+                    PlaySteps(when { !installed -> 0; !alive || st2 == null -> 1; !tunnel.on -> 2; else -> 3 })
+                    when {
+                        playing -> {
+                            VpButton(
+                                when { !installed -> "INSTALLING…"; !alive || st2 == null -> "STARTING…"; else -> "GOING PUBLIC…" },
+                                VP.Gold, Modifier.fillMaxWidth(), enabled = false,
+                            ) {}
+                            TextButton({ playing = false }) { Text("Cancel") }
+                        }
+                        !alive -> {
+                            VpButton(if (installed) "PLAY" else "SET UP & PLAY", VP.Grass, Modifier.fillMaxWidth(), enabled = eula && busy.isEmpty()) { play() }
+                            if (!installed && !eula) Text("Tick the EULA above to continue.", color = VP.Muted, fontSize = 12.sp)
+                            else if (installed) Text("Starts the server and puts it online for your friends.", color = VP.Muted, fontSize = 12.sp)
+                        }
+                        else -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            VpButton("STOP", VP.Red, Modifier.weight(1f), enabled = busy.isEmpty()) {
+                                playing = false
+                                ServerService.send(ctx, ServerService.ACTION_STOP)
+                                TunnelService.send(ctx, TunnelService.ACTION_STOP)
+                            }
+                            VpButton("RESTART", VP.Gold, Modifier.weight(1f), enabled = busy.isEmpty()) { restart() }
+                        }
+                    }
+                    Text(
+                        when {
+                            st != null -> t("Online · {version} · {players}/{max} players", "version" to st.optString("version"), "players" to st.optInt("players"), "max" to st.optInt("max"))
+                            alive -> "Starting… the first start on a phone can take a few minutes."
+                            else -> "Stopped"
+                        },
+                        color = if (st != null) VP.GrassDark else VP.Muted, fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                    )
+
+                    if (installed && totalMb < 3800) Text(t("This phone has {ram} GB of RAM. Servers run best with 4 GB or more, so expect lag with more than a couple of players.", "ram" to "%.1f".format(totalMb / 1024f)), color = VP.Muted, fontSize = 13.sp)
+                    if (alive && hot) Text("Your phone is hot and may slow the server down. Let it cool, or choose Low-end in Settings → Performance.", color = VP.Red, fontSize = 13.sp)
+                    if (alive && !battery.second && battery.first <= 30) Text(t("Battery {percent}% and not charging. Plug in to keep the server running.", "percent" to battery.first), color = VP.Red, fontSize = 13.sp)
+
+                    var guideDone by remember { mutableStateOf(prefs.batteryGuideDone) }
+                    if (alive && !guideDone) {
+                        BatteryGuideCard(
+                            BatteryGuide.detect(Build.MANUFACTURER.orEmpty(), Build.BRAND.orEmpty()),
+                            onOpen = { BatteryGuide.open(ctx, BatteryGuide.detect(Build.MANUFACTURER.orEmpty(), Build.BRAND.orEmpty())) },
+                            onDismiss = { prefs.batteryGuideDone = true; guideDone = true },
+                        )
+                    }
+                }
+
+                if (installed && (alive || tunnel.on)) {
                 // ── Public address ──
                 Panel {
                     PanelTitle("PUBLIC ADDRESS")
@@ -574,21 +711,14 @@ private fun App() {
                                 if (net.metered) t(" · on mobile data, {mobile} today", "mobile" to DataLogic.format(usage.mobile)) else t(" · on Wi‑Fi"),
                             color = VP.Muted, fontSize = 12.sp,
                         )
+                        AddressTestRow(testing, testResult, tunnel.port > 0) { testAddress(publicHost, tunnel.port) }
                         VpButton("STOP PUBLIC", VP.Card, Modifier.fillMaxWidth()) { TunnelService.send(ctx, TunnelService.ACTION_STOP) }
                     }
                     TextButton({ identityOpen = true }) { Text("Back up or restore your address", fontSize = 13.sp) }
                 }
+                }
 
-                DataPanel(
-                    net, usage, limitMb, { limitMb = it; prefs.dataLimitMb = it },
-                    saver, { applySaver(it) }, installed, alive, { restart() },
-                )
-
-                DiscordPanel(acct, { AppAccount.signIn(ctx) }, { AppAccount.cancelSignIn() }, { AppAccount.signOut(ctx) })
-                AddressBackupPanel(acct, tunnel.on)
-
-                SupportPanel { screen = "support" }
-
+                if (installed) {
                 // ── Console preview (the full console is its own screen) ──
                 Panel {
                     PanelTitle("CONSOLE") { TextButton({ screen = "console" }) { Text("Open") } }
@@ -597,23 +727,13 @@ private fun App() {
                         for (line in log.takeLast(6)) Text(line, color = Color(0xFFE6E0D6), fontFamily = FontFamily.Monospace, fontSize = 10.5.sp, lineHeight = 13.sp, maxLines = 2)
                     }
                 }
-                // ── Version + manual update check ──
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        t("VoxelPort {version} · build {build}", "version" to Updater.installedName(ctx), "build" to Updater.installedCode(ctx)),
-                        color = VP.Muted, fontSize = 12.sp, modifier = Modifier.weight(1f),
-                    )
-                    TextButton({ Lang.set(ctx, if (Lang.current == Lang.EN) Lang.HINGLISH else Lang.EN) }) {
-                        Text(if (Lang.current == Lang.EN) "Hinglish" else "English", fontSize = 12.sp)
-                    }
-                    TextButton(
-                        { Updater.check(ctx, force = true) },
-                        enabled = update !is UpdateState.Checking && update !is UpdateState.Downloading && update !is UpdateState.Installing,
-                    ) { Text(if (update is UpdateState.Checking) "Checking…" else "Check for updates", fontSize = 12.sp) }
                 }
                 Spacer(Modifier.height(12.dp))
             }
         }
+    }
+    }
+    if (showBar) VpNavBar(screen, if (type == "fabric") "Mods" else "Plugins") { screen = it }
     }
 
     ask?.let { a -> DataAskDialog(a) { ask = null } }

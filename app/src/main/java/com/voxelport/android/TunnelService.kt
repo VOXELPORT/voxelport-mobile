@@ -9,6 +9,7 @@ import android.os.PowerManager
 import com.voxelport.go.mobile.Host
 import com.voxelport.go.mobile.Listener
 import com.voxelport.go.mobile.Mobile
+import org.json.JSONObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -177,9 +178,18 @@ class TunnelService : Service() {
                                 t("VoxelPort has used {used} of today's {limit} on mobile data.", "used" to DataLogic.format(use.mobile), "limit" to t(DataLogic.limitLabel(limit))) + " " +
                                     t("Sharing stops at the limit. Connect to Wi‑Fi to keep your server public."),
                             )
-                        // With the app closed, the notification is where you can see what hosting costs.
-                        if (net.metered && ++ticks % 6 == 0)
-                            Notify.update(this@TunnelService, "Minecraft server is public", t("On mobile data · {used} used today", "used" to DataLogic.format(use.mobile)))
+                        // With the app closed, the notification is where you see who is playing, the address to share, and what hosting costs.
+                        if (++ticks % 3 == 0) {
+                            val now = _state.value
+                            val address = now.address.ifEmpty { if (now.port > 0) "${now.host.ifEmpty { "play.voxelport.in" }}:${now.port}" else "" }
+                            val players = runCatching { JSONObject(Mobile.pingLocal(25565)).optInt("players", -1) }.getOrDefault(-1)
+                            val parts = listOfNotNull(
+                                if (players >= 0) t("{n} players online", "n" to players) else null,
+                                address.ifEmpty { null },
+                                if (net.metered) t("{used} mobile data today", "used" to DataLogic.format(use.mobile)) else null,
+                            )
+                            if (address.isNotEmpty()) Notify.update(this@TunnelService, "Minecraft server is public", parts.joinToString(" · "))
+                        }
                     }
                     DataLogic.HostCheck.OVER_LIMIT -> {
                         Notify.alert(
